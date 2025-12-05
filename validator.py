@@ -2,7 +2,6 @@ import json
 
 
 def load_reference_ranges():
-    """Load reference ranges from JSON file."""
     try:
         with open('reference_ranges.json', 'r') as f:
             return json.load(f)
@@ -11,10 +10,6 @@ def load_reference_ranges():
 
 
 def validate_parameters(parsed_data):
-    """
-    Validates extracted parameters against reference ranges.
-    Adds 'status' field to each parameter.
-    """
     reference_ranges = load_reference_ranges()
     validated_data = {}
     
@@ -28,7 +23,6 @@ def validate_parameters(parsed_data):
             "status": "UNKNOWN"
         }
         
-        # Check if reference range exists
         if param_name in reference_ranges:
             ref = reference_ranges[param_name]
             min_val = ref.get("min")
@@ -36,7 +30,6 @@ def validate_parameters(parsed_data):
             
             validated_data[param_name]["reference_range"] = f"{min_val} - {max_val} {ref.get('unit')}"
             
-            # Determine status
             if value < min_val:
                 validated_data[param_name]["status"] = "LOW"
             elif value > max_val:

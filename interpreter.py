@@ -1,8 +1,4 @@
 def interpret_results(validated_data):
-    """
-    Interprets validated blood test results.
-    Provides summary and recommendations.
-    """
     interpretation = {
         "summary": {},
         "abnormal_parameters": [],
@@ -35,7 +31,6 @@ def interpret_results(validated_data):
         elif status == "NORMAL":
             normal_count += 1
     
-    # Summary
     interpretation["summary"] = {
         "total_parameters": len(validated_data),
         "normal": normal_count,
@@ -43,11 +38,10 @@ def interpret_results(validated_data):
         "high": high_count
     }
     
-    # Recommendations
     if low_count == 0 and high_count == 0:
-        interpretation["recommendations"].append("All parameters are within normal range.")
+        interpretation["recommendations"].append("All parameters are normal.")
     else:
         interpretation["recommendations"].append(f"Found {low_count + high_count} abnormal parameter(s).")
-        interpretation["recommendations"].append("Please consult with a healthcare professional for detailed analysis.")
+        interpretation["recommendations"].append("Consult a doctor for detailed analysis.")
     
     return interpretation
