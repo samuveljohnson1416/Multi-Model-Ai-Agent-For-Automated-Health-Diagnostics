@@ -34,6 +34,9 @@ if uploaded_file is not None:
             ocr_text = extract_text_from_file(uploaded_file)
             st.text_area("Extracted Text", ocr_text, height=200)
             
+            # Show character count for debugging
+            st.caption(f"Extracted {len(ocr_text)} characters")
+            
             st.divider()
             
             # Step 2: Parse parameters
