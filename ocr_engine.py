@@ -60,3 +60,18 @@ def extract_text_from_image(uploaded_image):
         return text.strip()
     except Exception as e:
         return f"OCR Image Error: {str(e)}"
+
+
+def extract_text_from_file(uploaded_file):
+    """
+    Main function to extract text from uploaded file.
+    Handles both PDF and image formats.
+    """
+    file_type = uploaded_file.type
+    
+    if file_type == "application/pdf":
+        return extract_text_from_pdf(uploaded_file)
+    elif file_type in ["image/png", "image/jpeg", "image/jpg"]:
+        return extract_text_from_image(uploaded_file)
+    else:
+        return f"Unsupported file type: {file_type}"
