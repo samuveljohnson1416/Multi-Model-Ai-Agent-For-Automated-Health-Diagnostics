@@ -5,6 +5,7 @@ from ocr_engine import extract_text_from_file
 from parser import parse_blood_report
 from validator import validate_parameters
 from interpreter import interpret_results
+from csv_converter import json_to_ml_csv
 
 st.set_page_config(page_title="Blood Report Analyzer", layout="wide")
 
@@ -75,113 +76,33 @@ if uploaded_file is not None:
             
             st.divider()
             
-            # CSV Export Section
-            st.subheader("📊 CSV Export")
+            # ML-Ready CSV Export Section
+            st.subheader("📊 ML-Ready CSV Export")
             
-            # Create comprehensive CSV data with all OCR details
-            csv_data = []
+            # Convert OCR JSON to ML CSV format
+            ml_csv = json_to_ml_csv(ocr_text)
             
-            # Add OCR metadata
-            csv_data.append({
-                'Type': 'OCR_METADATA',
-                'Parameter': 'File_Name',
-                'Value': uploaded_file.name,
-                'Unit': 'N/A',
-                'Status': 'N/A',
-                'Reference_Range': 'N/A',
-                'Raw_Text': 'N/A'
-            })
-            
-            csv_data.append({
-                'Type': 'OCR_METADATA',
-                'Parameter': 'Text_Length',
-                'Value': len(ocr_text),
-                'Unit': 'characters',
-                'Status': 'N/A',
-                'Reference_Range': 'N/A',
-                'Raw_Text': 'N/A'
-            })
-            
-            # Add full OCR text
-            csv_data.append({
-                'Type': 'OCR_TEXT',
-                'Parameter': 'Full_Extracted_Text',
-                'Value': 'N/A',
-                'Unit': 'N/A',
-                'Status': 'N/A',
-                'Reference_Range': 'N/A',
-                'Raw_Text': ocr_text.replace('\n', ' | ').replace(',', ';')
-            })
-            
-            # Add parsed parameters
-            for param_name, param_info in validated_data.items():
-                csv_data.append({
-                    'Type': 'BLOOD_PARAMETER',
-                    'Parameter': param_name,
-                    'Value': param_info.get('value'),
-                    'Unit': param_info.get('unit'),
-                    'Status': param_info.get('status'),
-                    'Reference_Range': param_info.get('reference_range', 'N/A'),
-                    'Raw_Text': 'N/A'
-                })
-            
-            # Add interpretation summary
-            summary = interpretation["summary"]
-            csv_data.append({
-                'Type': 'SUMMARY',
-                'Parameter': 'Total_Parameters',
-                'Value': summary["total_parameters"],
-                'Unit': 'count',
-                'Status': 'N/A',
-                'Reference_Range': 'N/A',
-                'Raw_Text': 'N/A'
-            })
-            
-            csv_data.append({
-                'Type': 'SUMMARY',
-                'Parameter': 'Normal_Count',
-                'Value': summary["normal"],
-                'Unit': 'count',
-                'Status': 'N/A',
-                'Reference_Range': 'N/A',
-                'Raw_Text': 'N/A'
-            })
-            
-            csv_data.append({
-                'Type': 'SUMMARY',
-                'Parameter': 'Abnormal_Count',
-                'Value': summary["low"] + summary["high"],
-                'Unit': 'count',
-                'Status': 'N/A',
-                'Reference_Range': 'N/A',
-                'Raw_Text': 'N/A'
-            })
-            
-            if csv_data:
-                df = pd.DataFrame(csv_data)
-                
-                # Display CSV preview
-                st.write("**CSV Preview (All OCR Details):**")
-                st.dataframe(df, use_container_width=True)
-                
-                # Convert to CSV
-                csv_buffer = io.StringIO()
-                df.to_csv(csv_buffer, index=False)
-                csv_string = csv_buffer.getvalue()
+            # Display CSV preview
+            st.write("**ML-Ready CSV Preview:**")
+            try:
+                df_preview = pd.read_csv(io.StringIO(ml_csv))
+                st.dataframe(df_preview, use_container_width=True)
                 
                 # Download button
                 st.download_button(
-                    label="📥 Download Complete CSV Report",
-                    data=csv_string,
-                    file_name=f"complete_blood_report_{uploaded_file.name.split('.')[0]}.csv",
+                    label="📥 Download ML-Ready CSV",
+                    data=ml_csv,
+                    file_name=f"ml_ready_{uploaded_file.name.split('.')[0]}.csv",
                     mime="text/csv"
                 )
                 
                 # Show raw CSV text
-                with st.expander("View Raw CSV Data"):
-                    st.text(csv_string)
-            else:
-                st.warning("No data available for CSV export")
+                with st.expander("View Raw ML CSV Data"):
+                    st.text(ml_csv)
+                    
+            except Exception as e:
+                st.error(f"Error creating ML CSV: {str(e)}")
+                st.text(ml_csv)
             
         except Exception as e:
             st.error(f"Error: {str(e)}")
