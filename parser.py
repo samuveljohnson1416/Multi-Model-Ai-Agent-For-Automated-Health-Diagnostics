@@ -22,7 +22,25 @@ def parse_json_report(json_text):
 
 
 def parse_blood_report(ocr_text):
-    # Try JSON parsing first
+    # Try parsing structured OCR JSON first
+    try:
+        ocr_data = json.loads(ocr_text)
+        if "parameters" in ocr_data:
+            # Convert structured OCR format to our format
+            parameters = {}
+            for param in ocr_data["parameters"]:
+                param_name = param.get("name", "Unknown")
+                parameters[param_name] = {
+                    "value": float(param.get("value", 0)),
+                    "unit": param.get("unit", "N/A"),
+                    "reference_range": param.get("reference_range", "N/A"),
+                    "raw_text": param.get("raw_text", "N/A")
+                }
+            return parameters
+    except:
+        pass
+    
+    # Try regular JSON parsing
     json_params = parse_json_report(ocr_text)
     if json_params:
         return json_params
