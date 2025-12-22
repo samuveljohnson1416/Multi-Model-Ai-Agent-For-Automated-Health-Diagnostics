@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+import json
 from ocr_engine import extract_text_from_file
 from parser import parse_blood_report
 from validator import validate_parameters
@@ -15,9 +16,9 @@ st.markdown("Analyzes blood test reports and provides interpretations.")
 st.divider()
 
 uploaded_file = st.file_uploader(
-    "Upload your blood test report",
-    type=["pdf", "png", "jpg", "jpeg", "json"],
-    help="PDF, PNG, JPG, JPEG, JSON"
+    "Upload your medical report",
+    type=["pdf", "png", "jpg", "jpeg", "json", "csv"],
+    help="Supported: PDF, PNG, JPG, JPEG, JSON, CSV"
 )
 
 if uploaded_file is not None:
@@ -25,17 +26,175 @@ if uploaded_file is not None:
     
     with st.spinner("Processing..."):
         try:
-            # Extract text
-            st.subheader("📄 Step 1: Text Extraction")
-            ocr_text = extract_text_from_file(uploaded_file)
-            st.text_area("Extracted Text", ocr_text, height=200)
-            st.caption(f"{len(ocr_text)} characters")
+            # Data Ingestion - Format-specific processing
+            st.subheader("📄 Step 1: Data Ingestion")
+            ingestion_result = extract_text_from_file(uploaded_file)
+            
+            # Parse ingestion result
+            try:
+                result_data = json.loads(ingestion_result)
+                
+                # Handle different file types
+                if "file_type" in result_data:
+                    file_type = result_data["file_type"]
+                    
+                    if file_type == "CSV":
+                        st.success("✅ CSV file detected - returned as-is")
+                        st.text_area("CSV Content", result_data["csv_content"], height=200)
+                        st.info(result_data["message"])
+                        
+                        # Skip further processing for CSV
+                        st.stop()
+                        
+                    elif file_type == "JSON":
+                        st.success("✅ JSON file detected - parsed directly")
+                        st.json(result_data["data"])
+                        st.info(result_data["message"])
+                        
+                        # Skip further processing for JSON
+                        st.stop()
+                
+                # For medically processed files with multiple extraction agents
+                if "medical_parameters" in result_data or "phase1_extraction_csv" in result_data:
+                    processing_agents = result_data.get("processing_agents", {})
+                    phase1_agent = processing_agents.get("phase1_extractor", "")
+                    validation_agent = processing_agents.get("validation_agent", "")
+                    table_extractor = processing_agents.get("table_extractor", "")
+                    
+                    # Show processing status
+                    agents_used = [agent for agent in [phase1_agent, validation_agent, table_extractor] if agent]
+                    if len(agents_used) > 1:
+                        st.success(f"✅ Multi-Agent Processing: {len(agents_used)} specialized agents used")
+                    elif agents_used:
+                        st.success(f"✅ {agents_used[0]}")
+                    else:
+                        st.success("✅ OCR and document processing completed")
+                    
+                    # Display Phase-1 Image Extraction (PRIMARY for scanned images)
+                    phase1_csv = result_data.get("phase1_extraction_csv", "")
+                    if phase1_csv and phase1_csv.strip():
+                        st.subheader("🖼️ Phase-1 Medical Image Extraction (PRIMARY)")
+                        st.info("**Image-aware OCR reconstruction - Optimized for scanned medical images**")
+                        
+                        # Display CSV content
+                        try:
+                            import pandas as pd
+                            csv_df = pd.read_csv(io.StringIO(phase1_csv))
+                            if not csv_df.empty:
+                                st.dataframe(csv_df, use_container_width=True)
+                                
+                                # Highlight key features
+                                st.success(f"✅ Extracted {len(csv_df)} laboratory tests using image-aware reconstruction")
+                                
+                                # Download button for Phase-1 extraction
+                                st.download_button(
+                                    label="📥 Download Phase-1 Image CSV",
+                                    data=phase1_csv,
+                                    file_name=f"phase1_image_extraction_{uploaded_file.name.split('.')[0]}.csv",
+                                    mime="text/csv"
+                                )
+                            else:
+                                st.warning("OCR failure detected - no valid laboratory data found")
+                                st.info("This may indicate: low image quality, no tabular data, or unsupported format")
+                        except Exception as e:
+                            st.text_area("Raw Phase-1 CSV Data", phase1_csv, height=150)
+                    
+                    # Display additional table extraction if different from Phase-1
+                    table_csv = result_data.get("table_extraction_csv", "")
+                    if table_csv and table_csv.strip() and table_csv != phase1_csv:
+                        st.subheader("📊 Alternative Table Extraction")
+                        st.info("**Secondary extraction method - Pure table parsing**")
+                        
+                        try:
+                            csv_df = pd.read_csv(io.StringIO(table_csv))
+                            if not csv_df.empty:
+                                st.dataframe(csv_df, use_container_width=True)
+                                
+                                st.download_button(
+                                    label="📥 Download Alternative Table CSV",
+                                    data=table_csv,
+                                    file_name=f"table_extraction_{uploaded_file.name.split('.')[0]}.csv",
+                                    mime="text/csv"
+                                )
+                        except Exception as e:
+                            st.text_area("Raw Table CSV Data", table_csv, height=150)
+                    
+                    # Display medical validation summary if available
+                    medical_params = result_data.get("medical_parameters", [])
+                    if medical_params:
+                        st.subheader("🔬 Medical Validation Summary")
+                        st.info("**Clinical interpretation with status classification**")
+                        
+                        # Count status types
+                        status_counts = {"Normal": 0, "Low": 0, "High": 0, "UNKNOWN": 0}
+                        for param in medical_params:
+                            status = param.get("status", "UNKNOWN")
+                            status_counts[status] = status_counts.get(status, 0) + 1
+                        
+                        col1, col2, col3, col4, col5 = st.columns(5)
+                        with col1:
+                            st.metric("Total Tests", len(medical_params))
+                        with col2:
+                            st.metric("Normal", status_counts["Normal"], delta="✓" if status_counts["Normal"] > 0 else None)
+                        with col3:
+                            st.metric("Low", status_counts["Low"], delta="⚠" if status_counts["Low"] > 0 else None, delta_color="inverse")
+                        with col4:
+                            st.metric("High", status_counts["High"], delta="⚠" if status_counts["High"] > 0 else None, delta_color="inverse")
+                        with col5:
+                            st.metric("Unknown", status_counts["UNKNOWN"], delta="?" if status_counts["UNKNOWN"] > 0 else None, delta_color="off")
+                        
+                        # Show abnormal results
+                        abnormal_params = [p for p in medical_params if p.get("status") in ["Low", "High"]]
+                        if abnormal_params:
+                            st.warning("**Abnormal Results Detected:**")
+                            for param in abnormal_params:
+                                status_emoji = "🔻" if param["status"] == "Low" else "🔺"
+                                st.write(f"{status_emoji} **{param['name']}**: {param['value']} {param['unit']} ({param['status']}) - Reference: {param['reference_range']}")
+                    
+                    # Convert medical parameters to parser format for downstream processing
+                    parsed_data = {}
+                    for param in medical_params:
+                        parsed_data[param["name"]] = {
+                            "value": param["value"],
+                            "unit": param["unit"],
+                            "reference_range": param["reference_range"],
+                            "confidence": param.get("confidence", "0.95"),
+                            "status": param.get("status", "UNKNOWN")
+                        }
+                
+                # For OCR-processed files (old format)
+                elif "parameters" in result_data:
+                    st.success("✅ OCR and extraction completed")
+                    extracted_params = result_data["parameters"]
+                    
+                    if "raw_text" in result_data:
+                        st.text_area("Extracted Text", result_data["raw_text"], height=200)
+                    
+                    # Convert to parser format
+                    parsed_data = {}
+                    for param in extracted_params:
+                        parsed_data[param["name"]] = {
+                            "value": param["value"],
+                            "unit": param["unit"],
+                            "reference_range": param["reference_range"],
+                            "confidence": param["confidence"]
+                        }
+                else:
+                    # Fallback to old format
+                    st.text_area("Extracted Text", ingestion_result, height=200)
+                    parsed_data = parse_blood_report(ingestion_result)
+                    
+            except json.JSONDecodeError:
+                # Fallback for plain text
+                st.text_area("Extracted Text", ingestion_result, height=200)
+                parsed_data = parse_blood_report(ingestion_result)
+            
+            st.caption(f"Processing completed")
             
             st.divider()
             
             # Parse data
-            st.subheader("🔍 Step 2: Parameters")
-            parsed_data = parse_blood_report(ocr_text)
+            st.subheader("🔍 Step 2: Extracted Parameters")
             if not parsed_data:
                 st.warning("No parameters detected. Check if the report format is supported.")
             st.json(parsed_data)
@@ -80,7 +239,7 @@ if uploaded_file is not None:
             st.subheader("📊 ML-Ready CSV Export")
             
             # Convert OCR JSON to ML CSV format
-            ml_csv = json_to_ml_csv(ocr_text)
+            ml_csv = json_to_ml_csv(ingestion_result)
             
             # Display CSV preview
             st.write("**ML-Ready CSV Preview:**")

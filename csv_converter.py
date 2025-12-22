@@ -67,48 +67,121 @@ def clean_raw_text(raw_text):
     return cleaned if cleaned else "NA"
 
 
-def json_to_ml_csv(json_text, confidence="NA"):
-    """Convert OCR JSON to ML-ready CSV format"""
+def json_to_ml_csv(ingestion_result):
+    """Convert OCR and Data Ingestion output to ML-ready CSV"""
+    
+    csv_rows = []
+    
     try:
-        # Parse JSON
-        data = json.loads(json_text)
+        # Parse ingestion result
+        data = json.loads(ingestion_result)
         
-        # Extract parameters
-        parameters = data.get("parameters", [])
-        ocr_confidence = data.get("ocr_confidence", confidence)
+        # Handle different file types
+        if "file_type" in data:
+            file_type = data["file_type"]
+            
+            if file_type == "CSV":
+                # Return CSV as-is
+                return data["csv_content"]
+            
+            elif file_type == "JSON":
+                # Convert JSON data to CSV format
+                json_data = data["data"]
+                if isinstance(json_data, dict):
+                    for key, value in json_data.items():
+                        csv_rows.append({
+                            'name': key,
+                            'value': normalize_value(value),
+                            'unit': 'NA',
+                            'reference_range': 'NA',
+                            'raw_text': clean_raw_text(f"{key}: {value}"),
+                            'confidence': '1.00'
+                        })
         
-        # Create CSV rows
-        csv_rows = []
+        # Handle structured medical parameters
+        if "medical_parameters" in data:
+            parameters = data["medical_parameters"]
+            
+            for param in parameters:
+                csv_rows.append({
+                    'name': param.get('name', 'NA'),
+                    'value': normalize_value(param.get('value')),
+                    'unit': normalize_unit(param.get('unit')),
+                    'reference_range': normalize_reference_range(param.get('reference_range')),
+                    'raw_text': clean_raw_text(param.get('raw_text', param.get('name', ''))),
+                    'confidence': param.get('confidence', 'NA')
+                })
         
-        for param in parameters:
-            row = {
-                'name': param.get('name', 'NA'),
-                'value': normalize_value(param.get('value')),
-                'unit': normalize_unit(param.get('unit')),
-                'reference_range': normalize_reference_range(param.get('reference_range')),
-                'raw_text': clean_raw_text(param.get('raw_text')),
-                'confidence': ocr_confidence.replace('%', '') if '%' in str(ocr_confidence) else ocr_confidence
-            }
-            csv_rows.append(row)
+        # Handle OCR-extracted parameters (old format)
+        elif "parameters" in data:
+            parameters = data["parameters"]
+            
+            for param in parameters:
+                csv_rows.append({
+                    'name': param.get('name', 'NA'),
+                    'value': normalize_value(param.get('value')),
+                    'unit': normalize_unit(param.get('unit')),
+                    'reference_range': normalize_reference_range(param.get('reference_range')),
+                    'raw_text': clean_raw_text(param.get('raw_text')),
+                    'confidence': param.get('confidence', 'NA')
+                })
         
-        # Create DataFrame
+        # If no structured data found, try fallback extraction
+        if not csv_rows and "raw_text" in data:
+            csv_rows = fallback_extraction(data["raw_text"])
+            
+    except json.JSONDecodeError:
+        # Fallback for plain text
+        csv_rows = fallback_extraction(ingestion_result)
+    
+    # Create DataFrame
+    if csv_rows:
         df = pd.DataFrame(csv_rows)
-        
-        # Fill missing values with NA
+        # Remove duplicates and sort
+        df = df.drop_duplicates(subset=['name'], keep='first')
+        df = df.sort_values('name').reset_index(drop=True)
         df = df.fillna('NA')
-        
-        # Sort alphabetically by name
-        df = df.sort_values('name')
-        
-        # Reset index
-        df = df.reset_index(drop=True)
-        
-        # Convert to CSV string
-        csv_string = df.to_csv(index=False)
-        
-        return csv_string
-        
-    except Exception as e:
-        # Fallback: create empty CSV with headers
+    else:
+        # Empty DataFrame with headers
         df = pd.DataFrame(columns=['name', 'value', 'unit', 'reference_range', 'raw_text', 'confidence'])
-        return df.to_csv(index=False)
+    
+    return df.to_csv(index=False)
+
+
+def fallback_extraction(text):
+    """Fallback extraction for plain text"""
+    csv_rows = []
+    lines = text.split('\n')
+    
+    patterns = {
+        'Hemoglobin': r'(?i)(?:hemoglobin|hb|hgb).*?(\d+\.?\d*)',
+        'RBC': r'(?i)(?:rbc|red blood cell).*?(\d+\.?\d*)',
+        'WBC': r'(?i)(?:wbc|white blood cell).*?(\d+\.?\d*)',
+        'Platelet': r'(?i)(?:platelet|plt).*?(\d+\.?\d*)',
+        'Glucose': r'(?i)glucose.*?(\d+\.?\d*)',
+        'Cholesterol': r'(?i)cholesterol.*?(\d+\.?\d*)',
+        'Creatinine': r'(?i)creatinine.*?(\d+\.?\d*)',
+        'BUN': r'(?i)(?:bun|urea).*?(\d+\.?\d*)',
+    }
+    
+    for line in lines:
+        for param_name, pattern in patterns.items():
+            match = re.search(pattern, line)
+            if match:
+                value = match.group(1)
+                try:
+                    float_val = float(value)
+                    if 0.1 <= float_val <= 50000:
+                        csv_rows.append({
+                            'name': param_name,
+                            'value': normalize_value(value),
+                            'unit': 'NA',
+                            'reference_range': 'NA',
+                            'raw_text': clean_raw_text(line),
+                            'confidence': '0.70'
+                        })
+                        break
+                except ValueError:
+                    continue
+    
+    return csv_rows
