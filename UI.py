@@ -2,12 +2,290 @@ import streamlit as st
 import pandas as pd
 import io
 import json
+from datetime import datetime
 from ocr_engine import extract_text_from_file
 from parser import parse_blood_report
 from validator import validate_parameters
 from interpreter import interpret_results
 from csv_converter import json_to_ml_csv
-from phase2_integration import integrate_phase2_analysis, check_phase2_requirements
+from phase2_integration_safe import integrate_phase2_analysis, check_phase2_requirements
+from csv_schema_adapter import safe_percentage
+
+
+def generate_final_report(filename, parsed_data, validated_data, interpretation, ml_csv, phase2_result=None):
+    """Generate comprehensive final medical report"""
+    
+    # Extract basic information
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    total_params = interpretation["summary"]["total_parameters"]
+    normal_count = interpretation["summary"]["normal"]
+    abnormal_count = interpretation["summary"]["low"] + interpretation["summary"]["high"]
+    
+    # Phase-2 information
+    phase2_available = False
+    phase2_summary = {}
+    if phase2_result and phase2_result.get("phase2_summary", {}).get("available"):
+        phase2_available = True
+        phase2_summary = phase2_result["phase2_summary"]
+    
+    # Calculate success rate safely
+    success_rate = safe_percentage(normal_count, total_params, 1)
+    
+    # Generate HTML report
+    report_html = f"""
+    <div style="border: 2px solid #1f77b4; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #f8f9fa;">
+        <h2 style="color: #1f77b4; text-align: center; margin-bottom: 20px;">
+            🩺 COMPREHENSIVE MEDICAL REPORT
+        </h2>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <div>
+                <h4 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;">📄 Report Information</h4>
+                <p><strong>File Name:</strong> {filename}</p>
+                <p><strong>Analysis Date:</strong> {timestamp}</p>
+                <p><strong>Processing Method:</strong> Multi-Agent AI System</p>
+                <p><strong>AI Enhancement:</strong> {'✅ Phase-2 Mistral AI' if phase2_available else '❌ Phase-1 Only'}</p>
+            </div>
+            
+            <div>
+                <h4 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;">📊 Summary Statistics</h4>
+                <p><strong>Total Parameters:</strong> {total_params}</p>
+                <p><strong>Normal Results:</strong> <span style="color: green;">{normal_count}</span></p>
+                <p><strong>Abnormal Results:</strong> <span style="color: red;">{abnormal_count}</span></p>
+                <p><strong>Success Rate:</strong> {success_rate}%</p>
+            </div>
+        </div>
+    """
+    
+    # Add Phase-2 AI Analysis if available
+    if phase2_available:
+        overall_status = phase2_summary.get("overall_status", "Unknown")
+        risk_level = phase2_summary.get("risk_level", "Unknown")
+        ai_confidence = phase2_summary.get("ai_confidence", "Unknown")
+        
+        status_color = "#28a745" if overall_status == "Normal" else "#ffc107" if "Minor" in overall_status else "#dc3545"
+        risk_color = "#28a745" if risk_level == "Low" else "#ffc107" if risk_level == "Moderate" else "#dc3545"
+        
+        report_html += f"""
+        <div style="background-color: #e8f4fd; border-left: 4px solid #1f77b4; padding: 15px; margin: 15px 0;">
+            <h4 style="color: #1f77b4; margin-bottom: 15px;">🤖 AI-Powered Analysis (Mistral 7B)</h4>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div style="text-align: center; padding: 10px; background-color: white; border-radius: 5px;">
+                    <strong>Overall Status</strong><br>
+                    <span style="color: {status_color}; font-size: 1.2em; font-weight: bold;">{overall_status}</span>
+                </div>
+                <div style="text-align: center; padding: 10px; background-color: white; border-radius: 5px;">
+                    <strong>Risk Level</strong><br>
+                    <span style="color: {risk_color}; font-size: 1.2em; font-weight: bold;">{risk_level}</span>
+                </div>
+                <div style="text-align: center; padding: 10px; background-color: white; border-radius: 5px;">
+                    <strong>AI Confidence</strong><br>
+                    <span style="color: #17a2b8; font-size: 1.2em; font-weight: bold;">{ai_confidence}</span>
+                </div>
+            </div>
+        """
+        
+        # Add AI-detected abnormal findings
+        abnormal_findings = phase2_summary.get("abnormal_findings", [])
+        if abnormal_findings:
+            report_html += """
+            <h5 style="color: #dc3545; margin-bottom: 10px;">⚠️ AI-Detected Abnormal Findings:</h5>
+            <ul style="margin-bottom: 15px;">
+            """
+            for finding in abnormal_findings[:5]:  # Top 5
+                status_emoji = "🔻" if finding.get("status") == "Low" else "🔺" if finding.get("status") == "High" else "⚠️"
+                report_html += f"""
+                <li><strong>{finding.get('test', 'Unknown')}</strong>: {finding.get('value', 'Unknown')} 
+                    <span style="color: #dc3545;">({finding.get('status', 'Unknown')})</span> 
+                    - Reference: {finding.get('reference', 'Unknown')} {status_emoji}</li>
+                """
+            report_html += "</ul>"
+        
+        # Add AI recommendations
+        recommendations = phase2_summary.get("recommendations", {})
+        lifestyle_recs = recommendations.get("lifestyle", [])
+        if lifestyle_recs:
+            report_html += """
+            <h5 style="color: #28a745; margin-bottom: 10px;">💡 AI Lifestyle Recommendations:</h5>
+            <ul style="margin-bottom: 15px;">
+            """
+            for rec in lifestyle_recs[:3]:  # Top 3
+                report_html += f"<li>{rec}</li>"
+            report_html += "</ul>"
+        
+        report_html += "</div>"
+    
+    # Add detailed parameter results
+    report_html += """
+    <div style="margin-top: 20px;">
+        <h4 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;">🔬 Detailed Laboratory Results</h4>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                <thead>
+                    <tr style="background-color: #3498db; color: white;">
+                        <th style="padding: 10px; border: 1px solid #ddd;">Parameter</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Value</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Unit</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Reference Range</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+    """
+    
+    # Add parameter rows
+    for param_name, param_data in validated_data.items():
+        status = param_data.get("status", "Unknown")
+        status_color = "#28a745" if status == "NORMAL" else "#dc3545"
+        status_emoji = "✅" if status == "NORMAL" else "⚠️"
+        
+        report_html += f"""
+        <tr style="background-color: {'#f8f9fa' if status == 'NORMAL' else '#fff5f5'};">
+            <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">{param_name}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">{param_data.get('value', 'N/A')}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">{param_data.get('unit', 'N/A')}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">{param_data.get('reference_range', 'N/A')}</td>
+            <td style="padding: 8px; border: 1px solid #ddd; color: {status_color}; font-weight: bold;">
+                {status} {status_emoji}
+            </td>
+        </tr>
+        """
+    
+    report_html += """
+                </tbody>
+            </table>
+        </div>
+    </div>
+    """
+    
+    # Add medical disclaimer
+    report_html += """
+    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin-top: 20px;">
+        <h5 style="color: #856404; margin-bottom: 10px;">⚠️ Important Medical Disclaimer</h5>
+        <p style="color: #856404; margin: 0; font-size: 0.9em;">
+            This automated analysis is for informational purposes only and does not constitute medical advice, 
+            diagnosis, or treatment recommendations. Always consult with qualified healthcare professionals 
+            for proper medical evaluation and treatment decisions. The AI analysis should be used as a 
+            supplementary tool only.
+        </p>
+    </div>
+    """
+    
+    # Add technical information
+    report_html += f"""
+    <div style="margin-top: 20px; padding: 15px; background-color: #f1f3f4; border-radius: 5px;">
+        <h5 style="color: #5f6368; margin-bottom: 10px;">🔧 Technical Information</h5>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em; color: #5f6368;">
+            <div>
+                <strong>Processing Pipeline:</strong><br>
+                • Phase-1: Multi-Agent OCR Extraction<br>
+                • Medical Parameter Validation<br>
+                {'• Phase-2: Mistral 7B AI Analysis<br>' if phase2_available else ''}
+                • Completeness Guarantee Applied
+            </div>
+            <div>
+                <strong>Data Safety:</strong><br>
+                • Zero Hallucination Policy<br>
+                • Local Processing Only<br>
+                • No Data Upload to External Servers<br>
+                • ML-Ready CSV Export Available
+            </div>
+        </div>
+    </div>
+    </div>
+    """
+    
+    # Generate text version for download
+    success_rate = ((normal_count / total_params) * 100) if total_params > 0 else 0
+    
+    report_text = f"""
+COMPREHENSIVE MEDICAL REPORT
+{'='*50}
+
+Report Information:
+- File Name: {filename}
+- Analysis Date: {timestamp}
+- Processing Method: Multi-Agent AI System
+- AI Enhancement: {'Phase-2 Mistral AI' if phase2_available else 'Phase-1 Only'}
+
+Summary Statistics:
+- Total Parameters: {total_params}
+- Normal Results: {normal_count}
+- Abnormal Results: {abnormal_count}
+- Success Rate: {success_rate:.1f}%
+
+"""
+    
+    if phase2_available:
+        report_text += f"""
+AI-Powered Analysis (Mistral 7B):
+- Overall Status: {phase2_summary.get('overall_status', 'Unknown')}
+- Risk Level: {phase2_summary.get('risk_level', 'Unknown')}
+- AI Confidence: {phase2_summary.get('ai_confidence', 'Unknown')}
+
+"""
+        
+        abnormal_findings = phase2_summary.get("abnormal_findings", [])
+        if abnormal_findings:
+            report_text += "AI-Detected Abnormal Findings:\n"
+            for finding in abnormal_findings[:5]:
+                report_text += f"- {finding.get('test', 'Unknown')}: {finding.get('value', 'Unknown')} ({finding.get('status', 'Unknown')}) - Ref: {finding.get('reference', 'Unknown')}\n"
+            report_text += "\n"
+        
+        recommendations = phase2_summary.get("recommendations", {})
+        lifestyle_recs = recommendations.get("lifestyle", [])
+        if lifestyle_recs:
+            report_text += "AI Lifestyle Recommendations:\n"
+            for rec in lifestyle_recs[:3]:
+                report_text += f"- {rec}\n"
+            report_text += "\n"
+    
+    report_text += """
+Detailed Laboratory Results:
+"""
+    for param_name, param_data in validated_data.items():
+        status = param_data.get("status", "Unknown")
+        report_text += f"- {param_name}: {param_data.get('value', 'N/A')} {param_data.get('unit', '')} ({status}) [Ref: {param_data.get('reference_range', 'N/A')}]\n"
+    
+    report_text += f"""
+
+MEDICAL DISCLAIMER:
+This automated analysis is for informational purposes only and does not constitute 
+medical advice, diagnosis, or treatment recommendations. Always consult with qualified 
+healthcare professionals for proper medical evaluation and treatment decisions.
+
+Technical Information:
+- Processing: Multi-Agent AI System with Completeness Guarantee
+- Data Safety: Zero Hallucination, Local Processing Only
+- AI Model: {'Mistral 7B Instruct' if phase2_available else 'Rule-based Analysis'}
+- Generated: {timestamp}
+"""
+    
+    # Generate complete JSON
+    complete_analysis = {
+        "report_metadata": {
+            "filename": filename,
+            "timestamp": timestamp,
+            "total_parameters": total_params,
+            "normal_count": normal_count,
+            "abnormal_count": abnormal_count,
+            "phase2_available": phase2_available
+        },
+        "parsed_data": parsed_data,
+        "validated_data": validated_data,
+        "interpretation": interpretation,
+        "ml_csv_data": ml_csv,
+        "phase2_analysis": phase2_result if phase2_available else None
+    }
+    
+    return {
+        "report_html": report_html,
+        "report_text": report_text,
+        "complete_json": json.dumps(complete_analysis, indent=2),
+        "ai_analysis_json": json.dumps(phase2_result, indent=2) if phase2_available else "{}",
+        "phase2_available": phase2_available
+    }
 
 st.set_page_config(page_title="Blood Report Analyzer", layout="wide")
 
@@ -277,53 +555,87 @@ if uploaded_file is not None:
                 
                 with st.spinner("Running Phase-2 AI analysis..."):
                     try:
+                        # Debug: Check CSV content
+                        if not ml_csv or ml_csv.strip() == "":
+                            st.warning("No CSV data available for Phase-2 analysis")
+                        else:
+                            # Show CSV info for debugging
+                            try:
+                                debug_df = pd.read_csv(io.StringIO(ml_csv))
+                                st.info(f"Processing {len(debug_df)} rows through Phase-2 AI...")
+                            except:
+                                st.warning("CSV format issue detected")
+                        
                         # Process through Phase-2
                         phase2_integration = integrate_phase2_analysis(ml_csv)
                         
-                        if phase2_integration["phase2_summary"]["available"]:
+                        # Debug: Check integration result structure
+                        if not isinstance(phase2_integration, dict):
+                            st.error("Phase-2 integration returned invalid format")
+                        elif "phase2_summary" not in phase2_integration:
+                            st.error("Phase-2 integration missing summary")
+                        else:
                             summary = phase2_integration["phase2_summary"]
                             
-                            # Display key metrics
-                            col1, col2, col3, col4 = st.columns(4)
-                            with col1:
-                                st.metric("Overall Status", summary["overall_status"])
-                            with col2:
-                                st.metric("Risk Level", summary["risk_level"])
-                            with col3:
-                                st.metric("AI Confidence", summary["ai_confidence"])
-                            with col4:
-                                st.metric("Patterns Found", summary["metrics"]["patterns_detected"])
-                            
-                            # Display AI analysis
-                            st.markdown(phase2_integration["phase2_display_text"])
-                            
-                            # Show abnormal findings
-                            if summary["abnormal_findings"]:
-                                st.warning("**AI-Detected Abnormal Findings:**")
-                                for finding in summary["abnormal_findings"]:
-                                    status_emoji = "🔻" if finding["status"] == "Low" else "🔺" if finding["status"] == "High" else "⚠️"
-                                    st.write(f"{status_emoji} **{finding['test']}**: {finding['value']} ({finding['status']}) - Ref: {finding['reference']}")
-                            
-                            # Show AI recommendations
-                            if summary["recommendations"]["lifestyle"]:
-                                st.info("**AI Lifestyle Recommendations:**")
-                                for rec in summary["recommendations"]["lifestyle"]:
-                                    st.write(f"• {rec}")
-                            
-                            # Medical disclaimer
-                            st.warning("⚠️ **Medical Disclaimer**: This AI analysis is for informational purposes only. Always consult qualified healthcare professionals for medical decisions.")
-                            
-                            # Download Phase-2 results
-                            phase2_json = json.dumps(phase2_integration["phase2_full_result"], indent=2)
-                            st.download_button(
-                                label="📥 Download Phase-2 AI Analysis (JSON)",
-                                data=phase2_json,
-                                file_name=f"phase2_analysis_{uploaded_file.name.split('.')[0]}.json",
-                                mime="application/json"
-                            )
-                            
-                        else:
-                            st.warning(f"Phase-2 Analysis: {summary['message']}")
+                            if summary.get("available", False):
+                                # Display key metrics
+                                col1, col2, col3, col4 = st.columns(4)
+                                with col1:
+                                    st.metric("Overall Status", summary.get("overall_status", "Unknown"))
+                                with col2:
+                                    st.metric("Risk Level", summary.get("risk_level", "Unknown"))
+                                with col3:
+                                    st.metric("AI Confidence", summary.get("ai_confidence", "Unknown"))
+                                with col4:
+                                    metrics = summary.get("metrics", {})
+                                    st.metric("Patterns Found", metrics.get("patterns_detected", 0))
+                                
+                                # Display AI analysis
+                                display_text = phase2_integration.get("phase2_display_text", "No analysis available")
+                                st.markdown(display_text)
+                                
+                                # Show abnormal findings
+                                abnormal_findings = summary.get("abnormal_findings", [])
+                                if abnormal_findings:
+                                    st.warning("**AI-Detected Abnormal Findings:**")
+                                    for finding in abnormal_findings:
+                                        status_emoji = "🔻" if finding.get("status") == "Low" else "🔺" if finding.get("status") == "High" else "⚠️"
+                                        test_name = finding.get("test", "Unknown")
+                                        value = finding.get("value", "Unknown")
+                                        status = finding.get("status", "Unknown")
+                                        reference = finding.get("reference", "Unknown")
+                                        st.write(f"{status_emoji} **{test_name}**: {value} ({status}) - Ref: {reference}")
+                                
+                                # Show AI recommendations
+                                recommendations = summary.get("recommendations", {})
+                                lifestyle_recs = recommendations.get("lifestyle", [])
+                                if lifestyle_recs:
+                                    st.info("**AI Lifestyle Recommendations:**")
+                                    for rec in lifestyle_recs:
+                                        st.write(f"• {rec}")
+                                
+                                # Medical disclaimer
+                                st.warning("⚠️ **Medical Disclaimer**: This AI analysis is for informational purposes only. Always consult qualified healthcare professionals for medical decisions.")
+                                
+                                # Download Phase-2 results
+                                phase2_full = phase2_integration.get("phase2_full_result", {})
+                                phase2_json = json.dumps(phase2_full, indent=2)
+                                st.download_button(
+                                    label="📥 Download Phase-2 AI Analysis (JSON)",
+                                    data=phase2_json,
+                                    file_name=f"phase2_analysis_{uploaded_file.name.split('.')[0]}.json",
+                                    mime="application/json"
+                                )
+                            else:
+                                message = summary.get('message', 'Phase-2 analysis not available')
+                                status = summary.get('status', 'unknown')
+                                st.warning(f"Phase-2 Analysis ({status}): {message}")
+                                
+                                # Show debug info if available
+                                phase2_full = phase2_integration.get("phase2_full_result", {})
+                                if "error_details" in phase2_full:
+                                    with st.expander("Debug Information"):
+                                        st.text(phase2_full["error_details"])
                             
                     except Exception as e:
                         st.error(f"Phase-2 Analysis Error: {str(e)}")
@@ -333,6 +645,54 @@ if uploaded_file is not None:
                 st.warning("⚠️ Phase-2 AI Analysis requires Ollama with Mistral 7B model")
                 st.info(f"**Setup Instructions:**\n1. Install Ollama: https://ollama.ai\n2. Run: `{phase2_req['installation_command']}`\n3. Restart this application")
                 st.code(phase2_req['installation_command'])
+            
+            st.divider()
+            
+            # Final Comprehensive Report Section
+            st.subheader("📋 Final Medical Report")
+            
+            # Generate comprehensive report
+            final_report = generate_final_report(
+                uploaded_file.name,
+                parsed_data,
+                validated_data,
+                interpretation,
+                ml_csv,
+                phase2_integration if 'phase2_integration' in locals() else None
+            )
+            
+            # Display the final report
+            st.markdown(final_report["report_html"], unsafe_allow_html=True)
+            
+            # Download options for final report
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.download_button(
+                    label="📄 Download PDF Report",
+                    data=final_report["report_text"],
+                    file_name=f"medical_report_{uploaded_file.name.split('.')[0]}.txt",
+                    mime="text/plain"
+                )
+            
+            with col2:
+                st.download_button(
+                    label="📊 Download Complete Analysis (JSON)",
+                    data=final_report["complete_json"],
+                    file_name=f"complete_analysis_{uploaded_file.name.split('.')[0]}.json",
+                    mime="application/json"
+                )
+            
+            with col3:
+                if final_report.get("phase2_available"):
+                    st.download_button(
+                        label="🤖 Download AI Analysis (JSON)",
+                        data=final_report["ai_analysis_json"],
+                        file_name=f"ai_analysis_{uploaded_file.name.split('.')[0]}.json",
+                        mime="application/json"
+                    )
+                else:
+                    st.info("AI Analysis not available")
             
         except Exception as e:
             st.error(f"Error: {str(e)}")

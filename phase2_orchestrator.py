@@ -11,7 +11,7 @@ class Phase2Orchestrator:
     
     def __init__(self, ollama_url: str = "http://localhost:11434"):
         self.ollama_url = ollama_url
-        self.model_name = "mistral:7b-instruct"
+        self.model_name = "mistral:instruct"
         
     def _call_ollama(self, prompt: str, system_prompt: str = "") -> str:
         """Call Ollama API with error handling"""

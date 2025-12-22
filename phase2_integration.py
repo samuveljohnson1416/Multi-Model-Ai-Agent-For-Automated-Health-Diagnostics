@@ -3,6 +3,7 @@ import pandas as pd
 import io
 from typing import Dict, Any, Optional
 from phase2_orchestrator import process_csv_with_phase2
+from csv_schema_adapter import adapt_csv_for_phase2, safe_percentage
 
 
 class Phase2Integration:
@@ -51,8 +52,22 @@ class Phase2Integration:
                     "fallback_used": True
                 }
             
-            # Check required columns
-            required_cols = ["test_name", "value", "unit", "reference_range"]
+            # Check required columns (flexible naming)
+            required_cols = ["value", "unit", "reference_range"]
+            test_name_col = None
+            
+            # Check for test name column (flexible naming)
+            if "test_name" in df.columns:
+                test_name_col = "test_name"
+            elif "name" in df.columns:
+                test_name_col = "name"
+            else:
+                return {
+                    "phase2_status": "invalid_format",
+                    "message": "CSV missing test name column (expected 'test_name' or 'name')",
+                    "fallback_used": True
+                }
+            
             missing_cols = [col for col in required_cols if col not in df.columns]
             if missing_cols:
                 return {
@@ -60,6 +75,10 @@ class Phase2Integration:
                     "message": f"CSV missing required columns: {missing_cols}",
                     "fallback_used": True
                 }
+            
+            # Standardize column names for Phase-2 processing
+            if test_name_col == "name":
+                df = df.rename(columns={"name": "test_name"})
             
             # Process through Phase-2
             phase2_result = process_csv_with_phase2(csv_content, self.ollama_url)
@@ -240,7 +259,7 @@ def check_phase2_requirements() -> Dict[str, Any]:
     
     return {
         "ollama_available": integration.phase2_enabled,
-        "required_model": "mistral:7b-instruct",
-        "installation_command": "ollama pull mistral:7b-instruct",
+        "required_model": "mistral:instruct",
+        "installation_command": "ollama pull mistral:instruct",
         "status": "ready" if integration.phase2_enabled else "setup_required"
     }
