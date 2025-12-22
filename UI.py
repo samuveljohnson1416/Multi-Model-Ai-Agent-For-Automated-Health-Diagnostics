@@ -7,6 +7,7 @@ from parser import parse_blood_report
 from validator import validate_parameters
 from interpreter import interpret_results
 from csv_converter import json_to_ml_csv
+from phase2_integration import integrate_phase2_analysis, check_phase2_requirements
 
 st.set_page_config(page_title="Blood Report Analyzer", layout="wide")
 
@@ -81,7 +82,7 @@ if uploaded_file is not None:
                             import pandas as pd
                             csv_df = pd.read_csv(io.StringIO(phase1_csv))
                             if not csv_df.empty:
-                                st.dataframe(csv_df, use_container_width=True)
+                                st.dataframe(csv_df, width='stretch')
                                 
                                 # Highlight key features
                                 st.success(f"✅ Extracted {len(csv_df)} laboratory tests using image-aware reconstruction")
@@ -108,7 +109,7 @@ if uploaded_file is not None:
                         try:
                             csv_df = pd.read_csv(io.StringIO(table_csv))
                             if not csv_df.empty:
-                                st.dataframe(csv_df, use_container_width=True)
+                                st.dataframe(csv_df, width='stretch')
                                 
                                 st.download_button(
                                     label="📥 Download Alternative Table CSV",
@@ -245,7 +246,7 @@ if uploaded_file is not None:
             st.write("**ML-Ready CSV Preview:**")
             try:
                 df_preview = pd.read_csv(io.StringIO(ml_csv))
-                st.dataframe(df_preview, use_container_width=True)
+                st.dataframe(df_preview, width='stretch')
                 
                 # Download button
                 st.download_button(
@@ -262,6 +263,76 @@ if uploaded_file is not None:
             except Exception as e:
                 st.error(f"Error creating ML CSV: {str(e)}")
                 st.text(ml_csv)
+            
+            st.divider()
+            
+            # Phase-2 AI Analysis Section
+            st.subheader("🤖 Phase-2 AI Analysis (Mistral 7B)")
+            
+            # Check Phase-2 requirements
+            phase2_req = check_phase2_requirements()
+            
+            if phase2_req["status"] == "ready":
+                st.success("✅ Mistral 7B Instruct model available")
+                
+                with st.spinner("Running Phase-2 AI analysis..."):
+                    try:
+                        # Process through Phase-2
+                        phase2_integration = integrate_phase2_analysis(ml_csv)
+                        
+                        if phase2_integration["phase2_summary"]["available"]:
+                            summary = phase2_integration["phase2_summary"]
+                            
+                            # Display key metrics
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric("Overall Status", summary["overall_status"])
+                            with col2:
+                                st.metric("Risk Level", summary["risk_level"])
+                            with col3:
+                                st.metric("AI Confidence", summary["ai_confidence"])
+                            with col4:
+                                st.metric("Patterns Found", summary["metrics"]["patterns_detected"])
+                            
+                            # Display AI analysis
+                            st.markdown(phase2_integration["phase2_display_text"])
+                            
+                            # Show abnormal findings
+                            if summary["abnormal_findings"]:
+                                st.warning("**AI-Detected Abnormal Findings:**")
+                                for finding in summary["abnormal_findings"]:
+                                    status_emoji = "🔻" if finding["status"] == "Low" else "🔺" if finding["status"] == "High" else "⚠️"
+                                    st.write(f"{status_emoji} **{finding['test']}**: {finding['value']} ({finding['status']}) - Ref: {finding['reference']}")
+                            
+                            # Show AI recommendations
+                            if summary["recommendations"]["lifestyle"]:
+                                st.info("**AI Lifestyle Recommendations:**")
+                                for rec in summary["recommendations"]["lifestyle"]:
+                                    st.write(f"• {rec}")
+                            
+                            # Medical disclaimer
+                            st.warning("⚠️ **Medical Disclaimer**: This AI analysis is for informational purposes only. Always consult qualified healthcare professionals for medical decisions.")
+                            
+                            # Download Phase-2 results
+                            phase2_json = json.dumps(phase2_integration["phase2_full_result"], indent=2)
+                            st.download_button(
+                                label="📥 Download Phase-2 AI Analysis (JSON)",
+                                data=phase2_json,
+                                file_name=f"phase2_analysis_{uploaded_file.name.split('.')[0]}.json",
+                                mime="application/json"
+                            )
+                            
+                        else:
+                            st.warning(f"Phase-2 Analysis: {summary['message']}")
+                            
+                    except Exception as e:
+                        st.error(f"Phase-2 Analysis Error: {str(e)}")
+                        st.info("Falling back to Phase-1 analysis only")
+                        
+            else:
+                st.warning("⚠️ Phase-2 AI Analysis requires Ollama with Mistral 7B model")
+                st.info(f"**Setup Instructions:**\n1. Install Ollama: https://ollama.ai\n2. Run: `{phase2_req['installation_command']}`\n3. Restart this application")
+                st.code(phase2_req['installation_command'])
             
         except Exception as e:
             st.error(f"Error: {str(e)}")
