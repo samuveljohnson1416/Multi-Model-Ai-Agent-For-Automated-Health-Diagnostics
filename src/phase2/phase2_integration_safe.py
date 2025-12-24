@@ -2,8 +2,8 @@ import json
 import pandas as pd
 import io
 from typing import Dict, Any, Optional
-from phase2_orchestrator import process_csv_with_phase2
-from csv_schema_adapter import adapt_csv_for_phase2, safe_percentage
+from .phase2_orchestrator import process_csv_with_phase2
+from .csv_schema_adapter import adapt_csv_for_phase2, safe_percentage
 
 
 class Phase2Integration:

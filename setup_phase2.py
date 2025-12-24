@@ -120,7 +120,12 @@ def verify_model_available():
 def test_phase2_integration():
     """Test Phase-2 integration with sample data"""
     try:
-        from phase2_integration import check_phase2_requirements
+        # Add src to path for imports
+        import sys
+        import os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+        
+        from phase2.phase2_integration_safe import check_phase2_requirements
         
         print("Testing Phase-2 integration...")
         requirements = check_phase2_requirements()

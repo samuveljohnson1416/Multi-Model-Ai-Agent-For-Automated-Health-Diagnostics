@@ -9,9 +9,9 @@ import cv2
 import numpy as np
 import json
 import re
-from medical_validator import process_medical_document
-from table_extractor import extract_medical_table
-from phase1_extractor import extract_phase1_medical_image
+from phase1.medical_validator import process_medical_document
+from phase1.table_extractor import extract_medical_table
+from phase1.phase1_extractor import extract_phase1_medical_image
 
 # Set Tesseract path for Windows
 if os.name == 'nt':  # Windows

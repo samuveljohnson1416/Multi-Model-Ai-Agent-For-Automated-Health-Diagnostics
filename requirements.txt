@@ -1,0 +1,26 @@
+# Blood Report Analysis System - Dependencies
+
+# Core Dependencies
+streamlit>=1.28.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# OCR and Image Processing
+pytesseract>=0.3.10
+Pillow>=10.0.0
+opencv-python>=4.8.0
+pdf2image>=1.16.0
+PyPDF2>=3.0.0
+pdfplumber>=0.9.0
+
+# HTTP Requests (for Ollama)
+requests>=2.31.0
+
+# Optional: Enhanced Performance
+# torch>=2.0.0  # For GPU acceleration (optional)
+# transformers>=4.30.0  # For alternative LLM backends (optional)
+
+# Development Dependencies (optional)
+# pytest>=7.0.0
+# black>=23.0.0
+# flake8>=6.0.0

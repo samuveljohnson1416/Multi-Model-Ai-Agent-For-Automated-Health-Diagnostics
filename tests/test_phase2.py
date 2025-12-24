@@ -6,7 +6,12 @@ Validates all components with sample medical data
 
 import json
 import sys
-from phase2_integration import integrate_phase2_analysis, check_phase2_requirements
+import os
+
+# Add src directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from phase2.phase2_integration_safe import integrate_phase2_analysis, check_phase2_requirements
 
 
 def test_sample_csv():
@@ -90,7 +95,7 @@ def test_model_components():
     print("\n🔧 Testing Model Components...")
     
     try:
-        from phase2_orchestrator import Phase2Orchestrator
+        from phase2.phase2_orchestrator import Phase2Orchestrator
         
         orchestrator = Phase2Orchestrator()
         sample_csv = test_sample_csv()

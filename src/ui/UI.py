@@ -2,14 +2,21 @@ import streamlit as st
 import pandas as pd
 import io
 import json
+import sys
+import os
 from datetime import datetime
-from ocr_engine import extract_text_from_file
-from parser import parse_blood_report
-from validator import validate_parameters
-from interpreter import interpret_results
-from csv_converter import json_to_ml_csv
-from phase2_integration_safe import integrate_phase2_analysis, check_phase2_requirements
-from csv_schema_adapter import safe_percentage
+
+# Add parent directories to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from core.ocr_engine import extract_text_from_file
+from core.parser import parse_blood_report
+from core.validator import validate_parameters
+from core.interpreter import interpret_results
+from utils.csv_converter import json_to_ml_csv
+from phase2.phase2_integration_safe import integrate_phase2_analysis, check_phase2_requirements
+from phase2.csv_schema_adapter import safe_percentage
 
 
 def generate_final_report(filename, parsed_data, validated_data, interpretation, ml_csv, phase2_result=None):
