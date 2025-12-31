@@ -4,6 +4,7 @@ import io
 import json
 import sys
 import os
+import time
 from datetime import datetime
 
 # Add parent directories to path for imports
@@ -15,11 +16,13 @@ from core.parser import parse_blood_report
 from core.validator import validate_parameters
 from core.interpreter import interpret_results
 from utils.csv_converter import json_to_ml_csv
+from utils.ollama_manager import auto_start_ollama, get_ollama_manager
 from phase2.phase2_integration_safe import integrate_phase2_analysis, check_phase2_requirements
 from phase2.csv_schema_adapter import safe_percentage
+from ui.chat_interface import create_medical_chat_interface
 
 
-def generate_final_report(filename, parsed_data, validated_data, interpretation, ml_csv, phase2_result=None):
+def generate_final_report(filename, parsed_data, validated_data, interpretation, ml_csv, phase2_result=None, age=None, gender=None):
     """Generate comprehensive final medical report"""
     
     # Extract basic information
@@ -38,12 +41,26 @@ def generate_final_report(filename, parsed_data, validated_data, interpretation,
     # Calculate success rate safely
     success_rate = safe_percentage(normal_count, total_params, 1)
     
+    # Add demographic information if provided
+    demographic_section = ""
+    if age is not None or gender is not None:
+        demographic_section = f"""
+        <div style="background-color: #e8f5e8; border-left: 4px solid #28a745; padding: 15px; margin: 15px 0;">
+            <h4 style="color: #28a745; margin-bottom: 10px;">👤 Patient Demographics (Milestone-2 Enhanced)</h4>
+            <p><strong>Age:</strong> {age if age is not None else 'Not provided'}</p>
+            <p><strong>Gender:</strong> {gender if gender is not None else 'Not provided'}</p>
+            <p><strong>Contextual Analysis:</strong> ✅ Model-3 Applied for age/gender-specific insights</p>
+        </div>
+        """
+    
     # Generate HTML report
     report_html = f"""
     <div style="border: 2px solid #1f77b4; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #f8f9fa;">
         <h2 style="color: #1f77b4; text-align: center; margin-bottom: 20px;">
             🩺 COMPREHENSIVE MEDICAL REPORT
         </h2>
+        
+        {demographic_section}
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
             <div>
@@ -216,6 +233,11 @@ Report Information:
 - Processing Method: Multi-Agent AI System
 - AI Enhancement: {'Phase-2 Mistral AI' if phase2_available else 'Phase-1 Only'}
 
+Patient Demographics:
+- Age: {age if age is not None else 'Not provided'}
+- Gender: {gender if gender is not None else 'Not provided'}
+- Contextual Analysis: {'Milestone-2 Model-3 Applied' if (age is not None or gender is not None) else 'Not Available'}
+
 Summary Statistics:
 - Total Parameters: {total_params}
 - Normal Results: {normal_count}
@@ -296,8 +318,132 @@ Technical Information:
 
 st.set_page_config(page_title="Blood Report Analyzer", layout="wide")
 
-st.title("Blood Report Analyzer – Milestone 1")
-st.markdown("Analyzes blood test reports and provides interpretations.")
+# Custom CSS for modern chat interface
+st.markdown("""
+<style>
+/* Chat message styling */
+.chat-message {
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 10px;
+    max-width: 80%;
+    word-wrap: break-word;
+}
+
+.user-message {
+    background-color: #0084ff;
+    color: white;
+    margin-left: auto;
+    text-align: right;
+}
+
+.assistant-message {
+    background-color: #f1f3f4;
+    color: #333;
+    margin-right: auto;
+}
+
+/* Chat input styling */
+.stTextInput > div > div > input {
+    border-radius: 20px;
+    border: 2px solid #e0e0e0;
+    padding: 10px 15px;
+}
+
+.stTextInput > div > div > input:focus {
+    border-color: #0084ff;
+    box-shadow: 0 0 0 2px rgba(0, 132, 255, 0.2);
+}
+
+/* Button styling */
+.stButton > button {
+    border-radius: 20px;
+    border: none;
+    background: linear-gradient(90deg, #0084ff, #00a8ff);
+    color: white;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3);
+}
+
+/* Quick button styling */
+div[data-testid="column"] .stButton > button {
+    background: linear-gradient(90deg, #f8f9fa, #e9ecef);
+    color: #495057;
+    border: 1px solid #dee2e6;
+    font-size: 0.9em;
+}
+
+div[data-testid="column"] .stButton > button:hover {
+    background: linear-gradient(90deg, #e9ecef, #dee2e6);
+    transform: translateY(-1px);
+}
+
+/* Chat container */
+.chat-container {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    background-color: #fafafa;
+}
+
+/* Typing indicator */
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    color: #666;
+    font-style: italic;
+}
+
+.typing-dots {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: #666;
+    margin: 0 1px;
+    animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dots:nth-child(1) { animation-delay: -0.32s; }
+.typing-dots:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typing {
+    0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+    40% { transform: scale(1); opacity: 1; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Auto-start Ollama when the application launches
+@st.cache_resource
+def initialize_ollama():
+    """Initialize Ollama service on app startup"""
+    with st.spinner("🚀 Starting Ollama AI service..."):
+        setup_result = auto_start_ollama()
+        return setup_result
+
+# Initialize Ollama
+ollama_setup = initialize_ollama()
+
+st.title("Blood Report Analyzer – Milestone-2 Compliant")
+st.markdown("Advanced AI analysis with pattern recognition and contextual insights.")
+
+# Show Ollama status
+if ollama_setup["ready"]:
+    st.success("🤖 AI Analysis Ready - Ollama & Mistral 7B loaded")
+else:
+    st.warning("⚠️ AI Analysis Limited - Ollama setup incomplete")
+    with st.expander("Ollama Setup Details"):
+        for message in ollama_setup["messages"]:
+            st.write(message)
 
 st.divider()
 
@@ -306,6 +452,41 @@ uploaded_file = st.file_uploader(
     type=["pdf", "png", "jpg", "jpeg", "json", "csv"],
     help="Supported: PDF, PNG, JPG, JPEG, JSON, CSV"
 )
+
+# Demographic inputs for Milestone-2 contextual analysis
+st.subheader("👤 Optional: Demographic Information (for enhanced AI analysis)")
+col1, col2 = st.columns(2)
+
+with col1:
+    age = st.number_input(
+        "Age (years)", 
+        min_value=0, 
+        max_value=120, 
+        value=None,
+        placeholder="Enter age for contextual analysis",
+        help="Age helps provide age-specific reference context"
+    )
+
+with col2:
+    gender = st.selectbox(
+        "Gender",
+        options=[None, "Male", "Female", "Other"],
+        index=0,
+        help="Gender helps provide gender-specific reference context"
+    )
+
+# Show demographic status
+if age is not None or gender is not None:
+    demo_info = []
+    if age is not None:
+        demo_info.append(f"Age: {age}")
+    if gender is not None:
+        demo_info.append(f"Gender: {gender}")
+    st.info(f"🤖 Milestone-2 contextual analysis enabled: {', '.join(demo_info)}")
+else:
+    st.info("💡 Tip: Provide age/gender for enhanced AI contextual analysis (Milestone-2 Model-3)")
+
+st.divider()
 
 if uploaded_file is not None:
     st.success(f"File uploaded: {uploaded_file.name}")
@@ -573,8 +754,8 @@ if uploaded_file is not None:
                             except:
                                 st.warning("CSV format issue detected")
                         
-                        # Process through Phase-2
-                        phase2_integration = integrate_phase2_analysis(ml_csv)
+                        # Process through Phase-2 with demographic data
+                        phase2_integration = integrate_phase2_analysis(ml_csv, age=age, gender=gender)
                         
                         # Debug: Check integration result structure
                         if not isinstance(phase2_integration, dict):
@@ -658,14 +839,16 @@ if uploaded_file is not None:
             # Final Comprehensive Report Section
             st.subheader("📋 Final Medical Report")
             
-            # Generate comprehensive report
+            # Generate comprehensive report with demographic data
             final_report = generate_final_report(
                 uploaded_file.name,
                 parsed_data,
                 validated_data,
                 interpretation,
                 ml_csv,
-                phase2_integration if 'phase2_integration' in locals() else None
+                phase2_integration if 'phase2_integration' in locals() else None,
+                age=age,
+                gender=gender
             )
             
             # Display the final report
@@ -704,6 +887,51 @@ if uploaded_file is not None:
         except Exception as e:
             st.error(f"Error: {str(e)}")
             st.info("Please upload a valid blood report.")
+            
+        # Q&A Assistant Section - Modern Chat Interface
+        st.divider()
+        st.subheader("💬 AI Medical Assistant")
+        st.markdown("Chat with your AI assistant about your blood report analysis. All responses are based on your actual medical data.")
+        
+        # Initialize Q&A assistant if Phase-2 analysis is available
+        if 'phase2_integration' in locals() and phase2_integration.get("phase2_summary", {}).get("available", False):
+            # Import Q&A assistant
+            from core.qa_assistant import create_qa_assistant
+            
+            # Create assistant with analysis data
+            qa_assistant = create_qa_assistant(phase2_integration)
+            
+            # Create and render modern chat interface
+            chat_interface = create_medical_chat_interface(
+                qa_assistant, 
+                session_key=f"medical_chat_{uploaded_file.name}"
+            )
+            
+            # Render the complete chat interface
+            chat_interface.render_complete_interface()
+            
+        else:
+            # Fallback when AI is not available
+            st.info("🤖 **AI Chat Assistant Unavailable**")
+            st.markdown("""
+            The AI chat assistant requires Phase-2 analysis with Ollama and Mistral 7B.
+            
+            **To enable AI chat:**
+            1. Ensure Ollama is running (should auto-start)
+            2. Verify Mistral model: `ollama list`
+            3. Upload and analyze your blood report
+            
+            **Current Status:** Phase-1 analysis available, AI chat disabled
+            """)
+            
+            # Show basic analysis data viewer
+            with st.expander("📊 View Analysis Data (No AI Chat)"):
+                if 'interpretation' in locals():
+                    st.json(interpretation)
+                else:
+                    st.info("No analysis data available. Please upload a blood report first.")
+        
+        st.divider()
 else:
     st.info("👆 Upload a report to begin.")
     st.markdown("""

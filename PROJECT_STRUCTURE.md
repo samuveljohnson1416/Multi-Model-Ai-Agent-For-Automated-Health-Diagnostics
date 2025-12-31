@@ -15,7 +15,8 @@ Blood-Report-Analysis-System/
 │   │   ├── 📄 ocr_engine.py     # Multi-agent OCR processing
 │   │   ├── 📄 parser.py         # Parameter extraction
 │   │   ├── 📄 validator.py      # Data validation
-│   │   └── 📄 interpreter.py    # Result interpretation
+│   │   ├── 📄 interpreter.py    # Result interpretation
+│   │   └── 📄 qa_assistant.py   # Interactive Q&A assistant
 │   │
 │   ├── 📁 phase1/               # Phase-1 extraction modules
 │   │   ├── 📄 __init__.py
@@ -26,6 +27,7 @@ Blood-Report-Analysis-System/
 │   ├── 📁 phase2/               # Phase-2 AI analysis modules
 │   │   ├── 📄 __init__.py
 │   │   ├── 📄 phase2_orchestrator.py      # LLM orchestration
+│   │   ├── 📄 advanced_pattern_analysis.py # Pattern recognition & contextual analysis
 │   │   ├── 📄 phase2_integration_safe.py  # Safe integration
 │   │   └── 📄 csv_schema_adapter.py       # Schema validation
 │   │
@@ -60,6 +62,7 @@ Blood-Report-Analysis-System/
 - **`parser.py`**: Medical parameter extraction and parsing
 - **`validator.py`**: Data validation against reference ranges
 - **`interpreter.py`**: Result interpretation and classification
+- **`qa_assistant.py`**: Blood report Q&A assistant for interactive analysis queries
 
 ### **Phase-1 Extraction** (`src/phase1/`)
 - **`phase1_extractor.py`**: Image-aware OCR reconstruction with completeness guarantee
@@ -68,6 +71,7 @@ Blood-Report-Analysis-System/
 
 ### **Phase-2 AI Analysis** (`src/phase2/`)
 - **`phase2_orchestrator.py`**: Mistral 7B LLM orchestration engine
+- **`advanced_pattern_analysis.py`**: Advanced pattern recognition and contextual analysis models (Milestone-2)
 - **`phase2_integration_safe.py`**: Safety-enhanced integration layer
 - **`csv_schema_adapter.py`**: Robust CSV schema validation and adaptation
 
@@ -107,6 +111,7 @@ UI.py
 ├── core.parser
 ├── core.validator
 ├── core.interpreter
+├── core.qa_assistant
 ├── utils.csv_converter
 └── phase2.phase2_integration_safe
 

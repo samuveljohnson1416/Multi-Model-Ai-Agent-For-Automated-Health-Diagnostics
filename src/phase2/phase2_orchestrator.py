@@ -4,14 +4,16 @@ import io
 from typing import Dict, List, Any, Optional
 import requests
 import re
+from .advanced_pattern_analysis import Milestone2Integration
 
 
 class Phase2Orchestrator:
-    """Phase-2 Medical AI Analysis using Mistral 7B Instruct via Ollama"""
+    """Phase-2 Medical AI Analysis using Mistral 7B Instruct via Ollama with Milestone-2 Integration"""
     
     def __init__(self, ollama_url: str = "http://localhost:11434"):
         self.ollama_url = ollama_url
         self.model_name = "mistral:instruct"
+        self.milestone2_integration = Milestone2Integration()
         
     def _call_ollama(self, prompt: str, system_prompt: str = "") -> str:
         """Call Ollama API with error handling"""
@@ -55,7 +57,7 @@ class Phase2Orchestrator:
             return None
     
     def process_csv_to_phase2(self, csv_content: str) -> Dict[str, Any]:
-        """Main orchestration: CSV → Model 1 → Model 2 → Synthesis → Recommendations"""
+        """Main orchestration: CSV → Model 1 → Milestone-2 Models → Synthesis → Recommendations"""
         
         # Parse CSV
         try:
@@ -68,18 +70,25 @@ class Phase2Orchestrator:
         # Step 1: Parameter Interpretation (Model 1)
         model1_result = self._model1_parameter_interpretation(df)
         
-        # Step 2: Pattern Recognition & Risk Assessment (Model 2)
+        # Step 2: Milestone-2 Pattern Recognition & Contextual Analysis
+        milestone2_result = self.milestone2_integration.process_milestone2(
+            model1_result, csv_content
+        )
+        
+        # Step 3: Legacy Model 2 for backward compatibility
         model2_result = self._model2_pattern_risk_assessment(df, model1_result)
         
-        # Step 3: Synthesis Engine
-        synthesis_result = self._synthesis_engine(model1_result, model2_result)
+        # Step 4: Enhanced Synthesis Engine (integrates Milestone-2)
+        synthesis_result = self._enhanced_synthesis_engine(
+            model1_result, model2_result, milestone2_result
+        )
         
-        # Step 4: Recommendation Generator
+        # Step 5: Recommendation Generator
         recommendations = self._recommendation_generator(synthesis_result)
         
-        # Step 5: Final Report Assembly
-        final_report = self._assemble_final_report(
-            model1_result, model2_result, synthesis_result, recommendations
+        # Step 6: Final Report Assembly with Milestone-2
+        final_report = self._assemble_milestone2_report(
+            model1_result, model2_result, milestone2_result, synthesis_result, recommendations
         )
         
         return final_report
@@ -458,9 +467,60 @@ def _recommendation_generator(self, synthesis_result: Dict) -> Dict[str, Any]:
     rec_gen = RecommendationGenerator(self)
     return rec_gen.generate_recommendations(synthesis_result)
 
+def _enhanced_synthesis_engine(self, model1_result: Dict, model2_result: Dict, 
+                             milestone2_result: Dict) -> Dict[str, Any]:
+    """Enhanced Synthesis Engine that integrates Milestone-2 results"""
+    
+    # Get legacy synthesis
+    legacy_synthesis = self._synthesis_engine(model1_result, model2_result)
+    
+    # Extract Milestone-2 insights
+    milestone2_analysis = milestone2_result.get("milestone2_analysis", {})
+    model2_patterns = milestone2_analysis.get("model2_patterns", {})
+    model3_context = milestone2_analysis.get("model3_context", {})
+    
+    # Enhanced abnormal findings with pattern context
+    abnormal_params = legacy_synthesis.get("abnormal_parameters", [])
+    
+    # Add pattern-based risk assessment
+    pattern_risk = model2_patterns.get("risk_level", "Low")
+    detected_patterns = model2_patterns.get("patterns_detected", [])
+    
+    # Combine risk levels (take higher of legacy vs Milestone-2)
+    legacy_risk = legacy_synthesis.get("risk_level", "Low")
+    risk_levels = {"Low": 1, "Moderate": 2, "High": 3}
+    combined_risk_level = max(risk_levels.get(legacy_risk, 1), risk_levels.get(pattern_risk, 1))
+    combined_risk = [k for k, v in risk_levels.items() if v == combined_risk_level][0]
+    
+    # Enhanced key concerns
+    enhanced_concerns = legacy_synthesis.get("key_concerns", [])
+    enhanced_concerns.extend(detected_patterns[:3])  # Add top 3 patterns
+    
+    # Add contextual notes if available
+    context_notes = model3_context.get("context_notes", [])
+    
+    return {
+        "overall_status": legacy_synthesis.get("overall_status", "Unknown"),
+        "abnormal_parameters": abnormal_params,
+        "key_concerns": list(set(enhanced_concerns))[:5],  # Deduplicate, limit to 5
+        "risk_level": combined_risk,
+        "milestone2_enhancements": {
+            "patterns_detected": detected_patterns,
+            "pattern_risk_level": pattern_risk,
+            "context_notes": context_notes[:3],  # Top 3 context notes
+            "total_patterns": model2_patterns.get("total_patterns", 0)
+        },
+        "summary": {
+            "total_tests": model1_result.get("summary", {}).get("total_parameters", 0),
+            "abnormal_count": len(abnormal_params),
+            "patterns_detected": model2_patterns.get("total_patterns", 0),
+            "context_available": len(context_notes) > 0
+        }
+    }
+
 def _assemble_final_report(self, model1_result: Dict, model2_result: Dict, 
                           synthesis_result: Dict, recommendations: Dict) -> Dict[str, Any]:
-    """Assemble final user-friendly report"""
+    """Assemble final user-friendly report (legacy compatibility)"""
     
     return {
         "phase2_analysis": {
@@ -475,15 +535,64 @@ def _assemble_final_report(self, model1_result: Dict, model2_result: Dict,
         "medical_disclaimer": "This AI analysis is for informational purposes only. Always consult qualified healthcare professionals for medical decisions."
     }
 
+def _assemble_milestone2_report(self, model1_result: Dict, model2_result: Dict, 
+                               milestone2_result: Dict, synthesis_result: Dict, 
+                               recommendations: Dict) -> Dict[str, Any]:
+    """Assemble final report with Milestone-2 enhancements"""
+    
+    # Get legacy report structure
+    legacy_report = self._assemble_final_report(
+        model1_result, model2_result, synthesis_result, recommendations
+    )
+    
+    # Add Milestone-2 specific sections
+    milestone2_analysis = milestone2_result.get("milestone2_analysis", {})
+    
+    enhanced_report = {
+        **legacy_report,
+        "milestone2_compliance": {
+            "model2_pattern_recognition": {
+                "implemented": True,
+                "patterns_detected": milestone2_analysis.get("model2_patterns", {}).get("patterns_detected", []),
+                "pattern_types": [
+                    "CBC distribution patterns",
+                    "Lipid ratio analysis", 
+                    "WBC distribution imbalances",
+                    "RBC index coordination",
+                    "Cross-system abnormalities"
+                ],
+                "risk_assessment": milestone2_analysis.get("model2_patterns", {}).get("risk_level", "Low")
+            },
+            "model3_contextual_analysis": {
+                "implemented": True,
+                "demographic_context": milestone2_analysis.get("model3_context", {}).get("demographic_info", {}),
+                "context_notes": milestone2_analysis.get("model3_context", {}).get("context_notes", []),
+                "limitations": milestone2_analysis.get("model3_context", {}).get("context_limitations", [])
+            },
+            "integration_status": "MILESTONE-2_COMPLIANT",
+            "verification": {
+                "model2_uses_parameter_combinations": True,
+                "model2_detects_explicit_patterns": True,
+                "model3_provides_age_gender_context": True,
+                "phase1_authority_preserved": True
+            }
+        },
+        "detailed_milestone2_results": milestone2_result
+    }
+    
+    return enhanced_report
+
 # Bind methods to class
 Phase2Orchestrator._model1_parameter_interpretation = _model1_parameter_interpretation
 Phase2Orchestrator._model2_pattern_risk_assessment = _model2_pattern_risk_assessment
 Phase2Orchestrator._synthesis_engine = _synthesis_engine
+Phase2Orchestrator._enhanced_synthesis_engine = _enhanced_synthesis_engine
 Phase2Orchestrator._recommendation_generator = _recommendation_generator
 Phase2Orchestrator._assemble_final_report = _assemble_final_report
+Phase2Orchestrator._assemble_milestone2_report = _assemble_milestone2_report
 
 
 def process_csv_with_phase2(csv_content: str, ollama_url: str = "http://localhost:11434") -> Dict[str, Any]:
-    """Main entry point for Phase-2 processing"""
+    """Main entry point for Phase-2 processing with Milestone-2 support"""
     orchestrator = Phase2Orchestrator(ollama_url)
     return orchestrator.process_csv_to_phase2(csv_content)

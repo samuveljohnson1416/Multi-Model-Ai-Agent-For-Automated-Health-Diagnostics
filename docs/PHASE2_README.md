@@ -100,7 +100,7 @@ python setup_phase2.py
 
 ### Programmatic Usage
 ```python
-from phase2_integration import integrate_phase2_analysis
+from phase2.phase2_integration_safe import integrate_phase2_analysis
 
 # Process CSV through Phase-2
 csv_content = "test_name,value,unit,reference_range\nHemoglobin,12.5,g/dL,13.0-17.0"
@@ -226,10 +226,10 @@ class Phase2Orchestrator:
 ### Testing
 ```python
 # Test individual components
-python -c "from phase2_integration import check_phase2_requirements; print(check_phase2_requirements())"
+python -c "from phase2.phase2_integration_safe import check_phase2_requirements; print(check_phase2_requirements())"
 
 # Test full pipeline
-python -c "from phase2_integration import integrate_phase2_analysis; print(integrate_phase2_analysis('test_name,value,unit,reference_range\nHemoglobin,12.5,g/dL,13.0-17.0'))"
+python -c "from phase2.phase2_integration_safe import integrate_phase2_analysis; print(integrate_phase2_analysis('test_name,value,unit,reference_range\nHemoglobin,12.5,g/dL,13.0-17.0'))"
 ```
 
 ## Security & Privacy
