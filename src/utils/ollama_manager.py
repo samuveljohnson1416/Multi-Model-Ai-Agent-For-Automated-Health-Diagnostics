@@ -82,12 +82,22 @@ class OllamaManager:
     def check_mistral_model(self) -> bool:
         """Check if Mistral model is available"""
         try:
-            response = requests.get(f"{self.ollama_url}/api/tags", timeout=10)
+            response = requests.get(f"{self.ollama_url}/api/tags", timeout=15)
             if response.status_code == 200:
                 models = response.json().get("models", [])
-                return any("mistral" in model.get("name", "") for model in models)
-            return False
-        except Exception:
+                # Check for any mistral variant
+                mistral_models = [model.get("name", "") for model in models if "mistral" in model.get("name", "").lower()]
+                if mistral_models:
+                    logger.info(f"Found Mistral models: {mistral_models}")
+                    return True
+                else:
+                    logger.warning("No Mistral models found")
+                    return False
+            else:
+                logger.error(f"Failed to get models list: {response.status_code}")
+                return False
+        except Exception as e:
+            logger.error(f"Error checking Mistral model: {e}")
             return False
     
     def pull_mistral_model(self) -> bool:
@@ -99,7 +109,7 @@ class OllamaManager:
         logger.info("Pulling Mistral model... This may take a few minutes.")
         
         try:
-            # Pull mistral:instruct model
+            # Try to pull mistral:instruct model
             if sys.platform.startswith('win'):
                 process = subprocess.Popen(
                     ["ollama", "pull", "mistral:instruct"],
@@ -114,19 +124,20 @@ class OllamaManager:
                     stderr=subprocess.PIPE
                 )
             
-            # Wait for model pull to complete
-            stdout, stderr = process.communicate(timeout=600)  # 10 minute timeout
-            
-            if process.returncode == 0:
-                logger.info("Mistral model pulled successfully")
-                return True
-            else:
-                logger.error(f"Failed to pull Mistral model: {stderr.decode()}")
+            # Wait for completion with timeout
+            try:
+                stdout, stderr = process.communicate(timeout=300)  # 5 minutes timeout
+                if process.returncode == 0:
+                    logger.info("Mistral model pulled successfully")
+                    return self.check_mistral_model()
+                else:
+                    logger.error(f"Failed to pull Mistral model: {stderr.decode()}")
+                    return False
+            except subprocess.TimeoutExpired:
+                process.kill()
+                logger.error("Mistral model pull timed out")
                 return False
                 
-        except subprocess.TimeoutExpired:
-            logger.error("Model pull timed out")
-            return False
         except Exception as e:
             logger.error(f"Error pulling Mistral model: {str(e)}")
             return False

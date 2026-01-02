@@ -117,25 +117,6 @@ class Phase1MedicalImageExtractor:
                     break
         
         return demographics
-        
-        # Method patterns that may appear on separate lines
-        self.method_patterns = [
-            r'(?i)(calculated)',
-            r'(?i)(electrical\s+impedance)',
-            r'(?i)(vcs)',
-            r'(?i)(immunoturbidimetry)',
-            r'(?i)(photometry)',
-            r'(?i)(flow\s+cytometry)',
-        ]
-        
-        # Unit patterns
-        self.unit_patterns = [
-            r'(?i)(g/dl|gm/dl|g%)',
-            r'(?i)(mill/cumm|million/cumm)',
-            r'(?i)(thou/cumm|thousand/cumm)',
-            r'(?i)(/cumm|cells/cumm)',
-            r'(?i)(fl|pg|%|percent)',
-        ]
     
     def is_ocr_failure(self, ocr_text):
         """Detect OCR failure conditions"""
@@ -346,19 +327,22 @@ class Phase1MedicalImageExtractor:
         }
     
     def extract_to_csv(self, ocr_text):
-        """Main extraction method - returns CSV format only"""
+        """Main extraction method - returns CSV format with demographics"""
         
         # Check for OCR failure
         if self.is_ocr_failure(ocr_text):
-            # Return empty CSV with headers
-            return "test_name,value,unit,reference_range,method,raw_text\n"
+            # Return empty CSV with headers including demographics
+            return "test_name,value,unit,reference_range,method,raw_text,age,gender\n"
+        
+        # Extract demographics from OCR text
+        demographics = self.extract_demographics(ocr_text)
         
         # Reconstruct table rows using image-aware reasoning
         reconstructed_rows = self.reconstruct_table_rows(ocr_text)
         
         if not reconstructed_rows:
-            # No valid rows found - return empty CSV with headers
-            return "test_name,value,unit,reference_range,method,raw_text\n"
+            # No valid rows found - return empty CSV with headers including demographics
+            return "test_name,value,unit,reference_range,method,raw_text,age,gender\n"
         
         # Extract data from each row - COMPLETENESS RULE: Include ALL detected tests
         extracted_data = []
@@ -377,15 +361,19 @@ class Phase1MedicalImageExtractor:
                 if not row_data['method']:
                     row_data['method'] = 'NA'
                 
+                # Add demographics to each row
+                row_data['age'] = demographics['age'] if demographics['age'] is not None else 'NA'
+                row_data['gender'] = demographics['gender'] if demographics['gender'] is not None else 'NA'
+                
                 extracted_data.append(row_data)
         
         # Generate CSV output
         if not extracted_data:
-            return "test_name,value,unit,reference_range,method,raw_text\n"
+            return "test_name,value,unit,reference_range,method,raw_text,age,gender\n"
         
         # Create CSV string
         output = io.StringIO()
-        fieldnames = ['test_name', 'value', 'unit', 'reference_range', 'method', 'raw_text']
+        fieldnames = ['test_name', 'value', 'unit', 'reference_range', 'method', 'raw_text', 'age', 'gender']
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         
         writer.writeheader()

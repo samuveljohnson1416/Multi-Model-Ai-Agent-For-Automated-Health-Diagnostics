@@ -1,57 +1,83 @@
 """
 Blood Report Q&A Assistant
-Answers questions using ONLY the provided blood report analysis data
+Uses Mistral LLM with strict medical prompting for constrained Q&A
 """
 
 import json
+import requests
 from typing import Dict, List, Any, Optional
 
 
 class BloodReportQAAssistant:
     """
-    Blood Report Q&A Assistant embedded inside the medical analysis system.
-    
-    Answers questions ONLY using the provided blood report analysis data including:
-    - Parameter interpretations (Model 1)
-    - Risk assessments (Model 2) 
-    - Contextual adjustments (Model 3)
-    - Synthesized findings
-    - Generated recommendations
-    
-    STRICT RULES:
-    - Do NOT use external or general medical knowledge
-    - Do NOT diagnose diseases
-    - Do NOT prescribe medications or treatments
-    - Do NOT assume missing information
-    - Do NOT modify, recompute, or infer new results
-    - If answer is NOT supported by analysis, reply: "This information is not available in your blood report analysis."
+    Medical Report Question-Answering Assistant using Mistral LLM.
+    Sends questions with report data to LLM using strict medical prompt.
     """
     
-    def __init__(self):
+    def __init__(self, ollama_url: str = "http://localhost:11434"):
         self.analysis_data = None
-        self.disclaimer = "This information is for educational purposes only and is not a substitute for professional medical advice."
+        self.ollama_url = ollama_url
+        self.model_name = "mistral:instruct"
         
-        # Question patterns for routing
-        self.parameter_keywords = [
-            'hemoglobin', 'cholesterol', 'glucose', 'wbc', 'rbc', 'platelet', 
-            'hdl', 'ldl', 'triglycerides', 'creatinine', 'bun', 'alt', 'ast',
-            'high', 'low', 'normal', 'abnormal', 'level', 'count', 'value'
-        ]
-        
-        self.risk_keywords = [
-            'risk', 'pattern', 'concern', 'worry', 'dangerous', 'serious',
-            'problem', 'issue', 'finding', 'result'
-        ]
-        
-        self.context_keywords = [
-            'age', 'gender', 'why', 'because', 'reason', 'affect', 'influence',
-            'context', 'demographic'
-        ]
-        
-        self.recommendation_keywords = [
-            'recommend', 'advice', 'suggest', 'should', 'do', 'next',
-            'lifestyle', 'diet', 'exercise', 'follow'
-        ]
+        # Strict medical prompt template
+        self.system_prompt = """You are a Medical Report Question–Answering Assistant.
+You are NOT a general chatbot.
+You exist ONLY to answer questions about a single uploaded medical report.
+The user has already uploaded a blood report.
+The extracted and validated report data provided to you is COMPLETE, AUTHORITATIVE, and the ONLY source of truth.
+
+--------------------------------------------------
+STRICT SCOPE RULES (NON-NEGOTIABLE)
+--------------------------------------------------
+1. You MUST answer ONLY questions that are directly related to:
+   - Parameters in the uploaded report
+   - Their values, units, reference ranges, and status
+   - Patterns or summaries derived from the report
+   - Recommendations explicitly linked to report findings
+
+2. You MUST NOT:
+   - Answer general medical questions
+   - Use external medical knowledge
+   - Diagnose diseases
+   - Suggest medications or treatments
+   - Guess or infer missing information
+   - Hallucinate values, conditions, or causes
+
+--------------------------------------------------
+UNRELATED OR OUT-OF-SCOPE QUESTIONS
+--------------------------------------------------
+If the user asks ANY question that cannot be answered using the provided report data, respond EXACTLY with:
+"I can only answer questions related to the uploaded medical report."
+
+--------------------------------------------------
+MISSING INFORMATION HANDLING
+--------------------------------------------------
+If the user asks about something that is medical but NOT present in the report, respond with:
+"The requested information is not available in the uploaded report."
+
+--------------------------------------------------
+HOW YOU MUST ANSWER
+--------------------------------------------------
+- Base every answer ONLY on the provided report data
+- Keep answers clear, factual, and simple
+- Use non-alarming, informational language
+- If helpful, quote relevant parameter names and values
+- Keep responses concise and readable
+
+--------------------------------------------------
+OUTPUT STYLE
+--------------------------------------------------
+- Plain text response
+- No markdown
+- No emojis
+- No extra commentary
+- No medical diagnosis
+
+--------------------------------------------------
+FINAL SAFETY RULE
+--------------------------------------------------
+If you are unsure whether a question is allowed, ASSUME IT IS NOT and politely refuse.
+"""
     
     def load_analysis_data(self, analysis_result: Dict[str, Any]) -> None:
         """Load blood report analysis data for Q&A"""
@@ -59,263 +85,183 @@ class BloodReportQAAssistant:
     
     def answer_question(self, question: str) -> str:
         """
-        Answer a question using ONLY the loaded blood report analysis data
-        
-        Args:
-            question: User's question about their blood report
-            
-        Returns:
-            Answer based on analysis data or unavailable message
+        Answer a question using Mistral LLM with strict medical prompting
         """
         if not self.analysis_data:
-            return "No blood report analysis data is currently loaded. Please analyze a blood report first."
+            return "No blood report analysis data is currently loaded."
         
-        question_lower = question.lower()
+        # Check if Ollama is available
+        if not self._is_ollama_available():
+            return "AI service is not available. Please ensure Ollama is running with Mistral model."
         
-        # Route question to appropriate handler
-        if any(keyword in question_lower for keyword in self.parameter_keywords):
-            return self._answer_parameter_question(question_lower)
-        elif any(keyword in question_lower for keyword in self.risk_keywords):
-            return self._answer_risk_question(question_lower)
-        elif any(keyword in question_lower for keyword in self.context_keywords):
-            return self._answer_context_question(question_lower)
-        elif any(keyword in question_lower for keyword in self.recommendation_keywords):
-            return self._answer_recommendation_question(question_lower)
-        else:
-            # Try general analysis overview
-            return self._answer_general_question(question_lower)
-    
-    def _answer_parameter_question(self, question: str) -> str:
-        """Answer questions about specific parameters"""
+        # Extract report data for the prompt
+        report_data = self._extract_report_data()
+        if not report_data:
+            return "No report data available for analysis."
+        
+        # Create the full prompt
+        full_prompt = self._create_prompt(report_data, question)
+        
+        # Send to Mistral LLM
         try:
-            # Get parameter interpretations from Model 1
-            interpretations = self._get_parameter_interpretations()
-            if not interpretations:
-                return "This information is not available in your blood report analysis."
-            
-            # Look for specific parameter mentions
-            for param in interpretations:
-                param_name = param.get('test_name', '').lower()
-                if param_name in question:
-                    classification = param.get('classification', 'Unknown')
-                    value = param.get('value', 'Unknown')
-                    ref_range = param.get('reference_range', 'Unknown')
-                    
-                    if classification == 'High':
-                        response = f"Your {param.get('test_name', 'parameter')} level is {value}, which is above the normal range of {ref_range}. "
-                        response += "This was identified as elevated in your analysis."
-                    elif classification == 'Low':
-                        response = f"Your {param.get('test_name', 'parameter')} level is {value}, which is below the normal range of {ref_range}. "
-                        response += "This was identified as low in your analysis."
-                    elif classification == 'Normal':
-                        response = f"Your {param.get('test_name', 'parameter')} level is {value}, which is within the normal range of {ref_range}."
-                    else:
-                        response = f"Your {param.get('test_name', 'parameter')} level is {value}. The classification is {classification}."
-                    
-                    return f"{response}\n\n{self.disclaimer}"
-            
-            # General parameter overview
-            abnormal_params = [p for p in interpretations if p.get('classification') in ['High', 'Low']]
-            if abnormal_params:
-                response = f"Your analysis found {len(abnormal_params)} parameter(s) outside normal ranges: "
-                param_list = [f"{p.get('test_name', 'Unknown')} ({p.get('classification', 'Unknown')})" 
-                             for p in abnormal_params[:3]]
-                response += ", ".join(param_list)
-                if len(abnormal_params) > 3:
-                    response += f" and {len(abnormal_params) - 3} others"
-            else:
-                response = "All analyzed parameters appear to be within normal ranges according to your analysis."
-            
-            return f"{response}\n\n{self.disclaimer}"
-            
+            response = self._query_mistral(full_prompt)
+            return response
+        except Exception as e:
+            return f"Error processing question: {str(e)}"
+    
+    def _is_ollama_available(self) -> bool:
+        """Check if Ollama service is available"""
+        try:
+            response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get("models", [])
+                return any("mistral" in model.get("name", "").lower() for model in models)
+            return False
         except Exception:
-            return "This information is not available in your blood report analysis."
+            return False
     
-    def _answer_risk_question(self, question: str) -> str:
-        """Answer questions about risks and patterns"""
+    def _extract_report_data(self) -> str:
+        """Extract and format report data for the prompt"""
         try:
-            # Get risk assessment from synthesis
-            synthesis = self._get_synthesis_data()
-            if not synthesis:
-                return "This information is not available in your blood report analysis."
+            # Get parameter data from analysis
+            parameters = []
             
-            risk_level = synthesis.get('risk_level', 'Unknown')
-            overall_status = synthesis.get('overall_status', 'Unknown')
-            key_concerns = synthesis.get('key_concerns', [])
-            
-            response = f"Based on your blood report analysis, your overall status is: {overall_status}. "
-            response += f"The risk level was assessed as: {risk_level}. "
-            
-            if key_concerns:
-                response += f"Key areas of concern identified include: {', '.join(key_concerns[:3])}."
-            else:
-                response += "No specific areas of concern were identified in the analysis."
-            
-            # Add pattern information if available
-            milestone2_features = synthesis.get('milestone2_enhancements', {})
-            patterns = milestone2_features.get('patterns_detected', [])
-            if patterns:
-                response += f" The analysis detected {len(patterns)} pattern(s) across your parameters."
-            
-            return f"{response}\n\n{self.disclaimer}"
-            
-        except Exception:
-            return "This information is not available in your blood report analysis."
-    
-    def _answer_context_question(self, question: str) -> str:
-        """Answer questions about age/gender context"""
-        try:
-            # Get contextual analysis from Model 3
-            milestone2_data = self._get_milestone2_data()
-            if not milestone2_data:
-                return "This information is not available in your blood report analysis."
-            
-            model3_context = milestone2_data.get('model3_context', {})
-            context_status = model3_context.get('context_status', 'Unknown')
-            demographic_info = model3_context.get('demographic_info', {})
-            context_notes = model3_context.get('context_notes', [])
-            
-            if context_status == 'Context not available':
-                response = "Age and gender information was not found in your blood report, so contextual adjustments could not be applied to your analysis."
-            else:
-                age_extracted = demographic_info.get('age_extracted', False)
-                gender_extracted = demographic_info.get('gender_extracted', False)
-                
-                if age_extracted or gender_extracted:
-                    response = "Your analysis included contextual adjustments based on "
-                    context_factors = []
-                    if age_extracted:
-                        age_value = demographic_info.get('age_value', 'Unknown')
-                        context_factors.append(f"age ({age_value})")
-                    if gender_extracted:
-                        gender_value = demographic_info.get('gender_value', 'Unknown')
-                        context_factors.append(f"gender ({gender_value})")
-                    
-                    response += " and ".join(context_factors) + ". "
-                    
-                    if context_notes:
-                        response += "Specific contextual considerations: " + "; ".join(context_notes[:2]) + "."
-                else:
-                    response = "No demographic context was available for your analysis."
-            
-            return f"{response}\n\n{self.disclaimer}"
-            
-        except Exception:
-            return "This information is not available in your blood report analysis."
-    
-    def _answer_recommendation_question(self, question: str) -> str:
-        """Answer questions about recommendations"""
-        try:
-            # Get recommendations from analysis
-            recommendations = self._get_recommendations()
-            if not recommendations:
-                return "This information is not available in your blood report analysis."
-            
-            lifestyle_recs = recommendations.get('lifestyle_recommendations', [])
-            follow_up = recommendations.get('follow_up_guidance', '')
-            consultation = recommendations.get('healthcare_consultation', '')
-            
-            response = ""
-            
-            if lifestyle_recs:
-                response += "The analysis generated these lifestyle recommendations: "
-                response += "; ".join(lifestyle_recs[:3]) + ". "
-            
-            if follow_up:
-                response += f"Follow-up guidance: {follow_up} "
-            
-            if consultation:
-                response += f"Important: {consultation}"
-            
-            if not response:
-                response = "No specific recommendations were generated in your analysis."
-            
-            return f"{response}\n\n{self.disclaimer}"
-            
-        except Exception:
-            return "This information is not available in your blood report analysis."
-    
-    def _answer_general_question(self, question: str) -> str:
-        """Answer general questions about the analysis"""
-        try:
-            # Provide general overview
-            synthesis = self._get_synthesis_data()
-            if not synthesis:
-                return "This information is not available in your blood report analysis."
-            
-            summary = synthesis.get('summary', {})
-            total_tests = summary.get('total_tests', 0)
-            abnormal_count = summary.get('abnormal_count', 0)
-            overall_status = synthesis.get('overall_status', 'Unknown')
-            
-            response = f"Your blood report analysis examined {total_tests} parameter(s). "
-            response += f"{abnormal_count} parameter(s) were found outside normal ranges. "
-            response += f"Overall status: {overall_status}."
-            
-            return f"{response}\n\n{self.disclaimer}"
-            
-        except Exception:
-            return "This information is not available in your blood report analysis."
-    
-    def _get_parameter_interpretations(self) -> List[Dict]:
-        """Extract parameter interpretations from analysis data"""
-        try:
             if 'phase2_full_result' in self.analysis_data:
                 param_interp = self.analysis_data['phase2_full_result'].get('parameter_interpretation', {})
-                return param_interp.get('interpretations', [])
-            return []
-        except Exception:
-            return []
+                interpretations = param_interp.get('interpretations', [])
+                
+                for interp in interpretations:
+                    param_data = {
+                        'test_name': interp.get('test_name', 'Unknown'),
+                        'value': interp.get('value', 'Unknown'),
+                        'unit': interp.get('unit', ''),
+                        'reference_range': interp.get('reference_range', 'Unknown'),
+                        'classification': interp.get('classification', 'Unknown')
+                    }
+                    parameters.append(param_data)
+            
+            # Format as structured text
+            if parameters:
+                report_text = "BLOOD REPORT PARAMETERS:\n"
+                for param in parameters:
+                    unit_text = f" {param['unit']}" if param['unit'] else ""
+                    report_text += f"- {param['test_name']}: {param['value']}{unit_text} "
+                    report_text += f"(Reference: {param['reference_range']}, Status: {param['classification']})\n"
+                
+                # Add summary
+                total_params = len(parameters)
+                normal_count = sum(1 for p in parameters if p['classification'] == 'Normal')
+                high_count = sum(1 for p in parameters if p['classification'] == 'High')
+                low_count = sum(1 for p in parameters if p['classification'] == 'Low')
+                
+                report_text += f"\nSUMMARY:\n"
+                report_text += f"- Total Parameters: {total_params}\n"
+                report_text += f"- Normal: {normal_count}\n"
+                report_text += f"- High: {high_count}\n"
+                report_text += f"- Low: {low_count}\n"
+                
+                return report_text
+            else:
+                return "No parameter data available in the report."
+                
+        except Exception as e:
+            return f"Error extracting report data: {str(e)}"
     
-    def _get_synthesis_data(self) -> Dict:
-        """Extract synthesis data from analysis"""
-        try:
-            if 'phase2_full_result' in self.analysis_data:
-                return self.analysis_data['phase2_full_result'].get('synthesis', {})
-            return {}
-        except Exception:
-            return {}
+    def _create_prompt(self, report_data: str, question: str) -> str:
+        """Create the full prompt for Mistral LLM"""
+        prompt = f"""{self.system_prompt}
+
+--------------------------------------------------
+BEGIN
+--------------------------------------------------
+REFERENCE MEDICAL REPORT DATA:
+{report_data}
+
+USER QUESTION:
+{question}
+
+RESPONSE:"""
+        
+        return prompt
     
-    def _get_milestone2_data(self) -> Dict:
-        """Extract Milestone-2 data from analysis"""
+    def _query_mistral(self, prompt: str) -> str:
+        """Send prompt to Mistral LLM via Ollama"""
         try:
-            if 'phase2_full_result' in self.analysis_data:
-                detailed_results = self.analysis_data['phase2_full_result'].get('detailed_milestone2_results', {})
-                return detailed_results.get('milestone2_analysis', {})
-            return {}
-        except Exception:
-            return {}
-    
-    def _get_recommendations(self) -> Dict:
-        """Extract recommendations from analysis"""
-        try:
-            if 'phase2_full_result' in self.analysis_data:
-                return self.analysis_data['phase2_full_result'].get('recommendations', {})
-            return {}
-        except Exception:
-            return {}
+            # Store the prompt for debugging
+            self._last_prompt = prompt
+            
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,  # Low temperature for consistent, factual responses
+                    "top_p": 0.9,
+                    "max_tokens": 500,   # Limit response length
+                    "stop": ["USER QUESTION:", "REFERENCE MEDICAL REPORT DATA:"]
+                }
+            }
+            
+            response = requests.post(
+                f"{self.ollama_url}/api/generate",
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                answer = result.get("response", "").strip()
+                
+                # Clean up the response
+                if answer:
+                    # Remove any system prompt leakage
+                    if "RESPONSE:" in answer:
+                        answer = answer.split("RESPONSE:")[-1].strip()
+                    
+                    return answer
+                else:
+                    return "No response generated from the AI model."
+            else:
+                return f"Error from AI service: {response.status_code}"
+                
+        except requests.exceptions.Timeout:
+            return "AI service timeout. Please try again."
+        except Exception as e:
+            return f"Error communicating with AI service: {str(e)}"
     
     def get_available_topics(self) -> List[str]:
         """Get list of topics that can be answered based on loaded analysis"""
         if not self.analysis_data:
             return ["No analysis data loaded"]
         
-        topics = []
-        
-        # Check what data is available
-        if self._get_parameter_interpretations():
-            topics.append("Parameter levels and classifications")
-        
-        if self._get_synthesis_data():
-            topics.append("Risk assessment and overall status")
-        
-        if self._get_milestone2_data():
-            topics.append("Pattern analysis and contextual factors")
-        
-        if self._get_recommendations():
-            topics.append("Lifestyle recommendations and follow-up guidance")
-        
-        return topics if topics else ["Limited analysis data available"]
+        try:
+            # Extract parameter names from analysis
+            parameters = []
+            if 'phase2_full_result' in self.analysis_data:
+                param_interp = self.analysis_data['phase2_full_result'].get('parameter_interpretation', {})
+                interpretations = param_interp.get('interpretations', [])
+                parameters = [interp.get('test_name', 'Unknown') for interp in interpretations]
+            
+            if parameters:
+                topics = [
+                    "Individual parameter values and status",
+                    "Parameters above or below normal ranges", 
+                    "Overall report summary",
+                    f"Available parameters: {', '.join(parameters[:5])}"
+                ]
+                if len(parameters) > 5:
+                    topics[-1] += f" and {len(parameters) - 5} others"
+                return topics
+            else:
+                return ["No parameter data available"]
+                
+        except Exception:
+            return ["Error loading analysis data"]
+    
+    def get_last_prompt(self) -> str:
+        """Get the last prompt sent to the LLM (for debugging)"""
+        # This would be set by _query_mistral if we want to track it
+        return getattr(self, '_last_prompt', "No prompt available")
 
 
 # Convenience function for integration
