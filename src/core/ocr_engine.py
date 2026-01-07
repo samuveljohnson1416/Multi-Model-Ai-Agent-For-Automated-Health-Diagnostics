@@ -69,10 +69,18 @@ class MedicalOCROrchestrator:
             return "pdf"
         elif file_type in ["image/png", "image/jpeg", "image/jpg"]:
             return "image"
+        elif file_type == "application/json" or file_name.endswith('.json'):
+            return "json"
+        elif file_type == "text/csv" or file_name.endswith('.csv'):
+            return "csv"
         elif file_name.endswith('.pdf'):
             return "pdf"
         elif file_name.endswith(('.png', '.jpg', '.jpeg')):
             return "image"
+        elif file_name.endswith('.json'):
+            return "json"
+        elif file_name.endswith('.csv'):
+            return "csv"
         else:
             return "unsupported"
     
@@ -395,13 +403,17 @@ class MedicalOCROrchestrator:
         
         if file_type == "unsupported":
             return self.create_error_response(
-                "Unsupported file type. Please upload PDF, PNG, JPG, or JPEG files."
+                "Unsupported file type. Please upload PDF, PNG, JPG, JPEG, JSON, or CSV files."
             )
         
         # Create temporary file
         try:
             if file_type == "pdf":
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+                    temp_file.write(uploaded_file.read())
+                    temp_file_path = temp_file.name
+            elif file_type in ["json", "csv"]:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_type}") as temp_file:
                     temp_file.write(uploaded_file.read())
                     temp_file_path = temp_file.name
             else:
@@ -414,6 +426,10 @@ class MedicalOCROrchestrator:
         try:
             if file_type == "pdf":
                 return self.process_pdf_file(temp_file_path)
+            elif file_type == "json":
+                return self.process_json_file(temp_file_path)
+            elif file_type == "csv":
+                return self.process_csv_file(temp_file_path)
             else:
                 return self.process_image_file(temp_file_path)
         finally:
@@ -644,6 +660,113 @@ class MedicalOCROrchestrator:
         _, binary = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         
         return Image.fromarray(binary)
+    
+    def process_json_file(self, json_path):
+        """
+        Process JSON file - extract medical data if present
+        """
+        try:
+            # Read JSON file
+            with open(json_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            
+            # Check if JSON contains medical parameters
+            json_str = str(json_data).lower()
+            medical_keywords = ['hemoglobin', 'glucose', 'cholesterol', 'rbc', 'wbc', 'platelet', 
+                              'hb', 'hgb', 'blood', 'test', 'result', 'count', 'level']
+            
+            has_medical_content = any(keyword in json_str for keyword in medical_keywords)
+            
+            if not has_medical_content:
+                return self.create_error_response(
+                    "JSON file doesn't contain medical data. Please upload a blood report with medical parameters."
+                )
+            
+            # Extract medical parameters from JSON
+            medical_text_lines = []
+            
+            def extract_medical_params(data, prefix=""):
+                """Recursively extract medical parameters and convert to text format"""
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        current_key = f"{prefix}_{key}" if prefix else key
+                        
+                        # Skip patient info fields
+                        if current_key.lower() in ['name', 'age', 'gender', 'patient', 'id', 'patient_info']:
+                            continue
+                        
+                        if isinstance(value, dict):
+                            # Check if this is a parameter with value/unit structure
+                            if 'value' in value:
+                                unit = value.get('unit', '')
+                                ref_range = value.get('reference_range', '')
+                                status = value.get('status', '')
+                                
+                                param_line = f"{current_key}: {value['value']}"
+                                if unit:
+                                    param_line += f" {unit}"
+                                if ref_range:
+                                    param_line += f" (Normal: {ref_range})"
+                                if status:
+                                    param_line += f" [{status}]"
+                                
+                                medical_text_lines.append(param_line)
+                            else:
+                                # Recursively check nested objects
+                                extract_medical_params(value, current_key)
+                        elif isinstance(value, (int, float, str)) and str(value).strip():
+                            # Simple key-value format
+                            medical_text_lines.append(f"{current_key}: {value}")
+            
+            # Extract parameters
+            extract_medical_params(json_data)
+            
+            if not medical_text_lines:
+                return self.create_error_response(
+                    "No medical parameters found in JSON. Expected format: {'parameter_name': {'value': '12.5', 'unit': 'g/dL', ...}}"
+                )
+            
+            # Convert to text format for processing
+            medical_text = "\n".join(medical_text_lines)
+            
+            # Add some context
+            full_text = f"Medical Report Data (from JSON):\n\n{medical_text}"
+            
+            return self.create_success_response(
+                full_text,
+                extraction_method="json_direct",
+                confidence=0.95,
+                validation_message=f"Successfully extracted {len(medical_text_lines)} medical parameters from JSON",
+                debug_info={
+                    'source_format': 'JSON',
+                    'parameters_found': len(medical_text_lines),
+                    'extraction_method': 'direct_json_parsing'
+                }
+            )
+            
+        except json.JSONDecodeError as e:
+            return self.create_error_response(f"Invalid JSON format: {str(e)}")
+        except Exception as e:
+            return self.create_error_response(f"JSON processing failed: {str(e)}")
+    
+    def process_csv_file(self, csv_path):
+        """
+        Process CSV file - return as-is for now
+        """
+        try:
+            # Read CSV content
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                csv_content = f.read()
+            
+            return json.dumps({
+                "file_type": "CSV",
+                "action": "passthrough",
+                "csv_content": csv_content,
+                "message": "CSV file returned as-is without OCR or extraction"
+            })
+            
+        except Exception as e:
+            return self.create_error_response(f"CSV processing error: {str(e)}")
     
     def create_success_response(self, text, extraction_method, confidence, validation_message="", debug_info=None):
         """

@@ -1,0 +1,45 @@
+{
+  "patient_info": {
+    "name": "John Doe",
+    "age": 45,
+    "gender": "Male"
+  },
+  "test_results": {
+    "hemoglobin": {
+      "value": "12.5",
+      "unit": "g/dL",
+      "reference_range": "13.0-17.0",
+      "status": "LOW"
+    },
+    "glucose": {
+      "value": "95",
+      "unit": "mg/dL",
+      "reference_range": "70-100",
+      "status": "NORMAL"
+    },
+    "total_cholesterol": {
+      "value": "220",
+      "unit": "mg/dL",
+      "reference_range": "<200",
+      "status": "HIGH"
+    },
+    "rbc_count": {
+      "value": "4.2",
+      "unit": "million/cumm",
+      "reference_range": "4.5-5.5",
+      "status": "LOW"
+    },
+    "wbc_count": {
+      "value": "7500",
+      "unit": "/μL",
+      "reference_range": "4000-11000",
+      "status": "NORMAL"
+    },
+    "platelet_count": {
+      "value": "250000",
+      "unit": "/μL",
+      "reference_range": "150000-450000",
+      "status": "NORMAL"
+    }
+  }
+}

@@ -207,14 +207,18 @@ if uploaded_file is not None:
                 if "file_type" in result_data:
                     file_type = result_data["file_type"]
                     
-                    if file_type in ["CSV", "JSON"]:
+                    if file_type == "CSV":
                         st.success(f"✅ {file_type} file processed")
+                        st.info("CSV files are processed as-is. For medical analysis, please upload a blood report image or PDF.")
                         st.stop()
                 
                 # Extract demographics and medical data
                 age = None
                 gender = None
-                parsed_data = {}
+                
+                # Initialize parsed_data if not already set by JSON processing
+                if 'parsed_data' not in locals():
+                    parsed_data = {}
                 
                 # For medically processed files with automatic demographic extraction
                 if "medical_parameters" in result_data or "phase1_extraction_csv" in result_data:
@@ -383,9 +387,10 @@ if uploaded_file is not None:
             
             st.divider()
             
-            # Generate and show simplified report
+            # Generate and show simplified report with Read More functionality
             st.subheader("📋 Medical Report")
             
+            # Generate the full report
             simplified_report = generate_simplified_report(
                 uploaded_file.name,
                 validated_data,
@@ -395,8 +400,38 @@ if uploaded_file is not None:
                 gender=gender
             )
             
-            # Display the report
-            st.markdown(simplified_report, unsafe_allow_html=True)
+            # Create a summary version (first part of the report)
+            summary_data = interpretation.get("summary", {})
+            total_params = summary_data.get("total_parameters", 0)
+            normal_count = summary_data.get("normal", 0)
+            abnormal_count = summary_data.get("low", 0) + summary_data.get("high", 0)
+            
+            # Show compact summary first
+            st.markdown(f"""
+            <div style="border: 2px solid #1f77b4; border-radius: 10px; padding: 15px; margin: 10px 0; background-color: #f8f9fa;">
+                <h3 style="color: #1f77b4; text-align: center; margin-bottom: 15px;">
+                    🩺 Medical Report Summary
+                </h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; text-align: center;">
+                    <div>
+                        <strong>Total Tests</strong><br>
+                        <span style="font-size: 1.5em; color: #2c3e50;">{total_params}</span>
+                    </div>
+                    <div>
+                        <strong>Normal</strong><br>
+                        <span style="font-size: 1.5em; color: #28a745;">{normal_count}</span>
+                    </div>
+                    <div>
+                        <strong>Abnormal</strong><br>
+                        <span style="font-size: 1.5em; color: #dc3545;">{abnormal_count}</span>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Add Read More expandable section
+            with st.expander("📄 Read More - Full Medical Report"):
+                st.markdown(simplified_report, unsafe_allow_html=True)
             
             # Download options
             col1, col2 = st.columns(2)
