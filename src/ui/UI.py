@@ -22,8 +22,8 @@ from phase2.csv_schema_adapter import safe_percentage
 from ui.chat_interface import create_medical_chat_interface
 
 
-def generate_simplified_report(filename, validated_data, interpretation, phase2_result=None, age=None, gender=None):
-    """Generate simplified medical report with only essential information"""
+def generate_clean_text_report(filename, validated_data, interpretation, phase2_result=None, age=None, gender=None):
+    """Generate clean text-based medical report without HTML styling"""
     
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
@@ -42,97 +42,78 @@ def generate_simplified_report(filename, validated_data, interpretation, phase2_
         phase2_available = True
         phase2_summary = phase2_result["phase2_summary"]
     
-    # Calculate success rate
-    success_rate = safe_percentage(normal_count, total_params, 1)
+    # Build clean text report
+    report_lines = []
     
-    # Generate HTML report
-    report_html = f"""
-    <div style="border: 2px solid #1f77b4; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #f8f9fa;">
-        <h2 style="color: #1f77b4; text-align: center; margin-bottom: 20px;">
-            🩺 MEDICAL REPORT SUMMARY
-        </h2>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-            <div>
-                <h4 style="color: #2c3e50;">📄 Report Information</h4>
-                <p><strong>File:</strong> {filename}</p>
-                <p><strong>Date:</strong> {timestamp}</p>
-                <p><strong>AI Analysis:</strong> {'✅ Enhanced' if phase2_available else '❌ Basic'}</p>
-            </div>
-            
-            <div>
-                <h4 style="color: #2c3e50;">📊 Results Summary</h4>
-                <p><strong>Total Tests:</strong> {total_params}</p>
-                <p><strong>Normal:</strong> <span style="color: green;">{normal_count}</span></p>
-                <p><strong>Abnormal:</strong> <span style="color: red;">{abnormal_count}</span></p>
-            </div>
-        </div>
-    """
+    # Header
+    report_lines.append("🩺 MEDICAL REPORT SUMMARY")
+    report_lines.append("=" * 50)
+    report_lines.append("")
     
-    # Add demographics if available
+    # Report Information
+    report_lines.append("📄 Report Information:")
+    report_lines.append(f"   File: {filename}")
+    report_lines.append(f"   Date: {timestamp}")
+    report_lines.append(f"   AI Analysis: {'✅ Enhanced' if phase2_available else '❌ Basic'}")
+    report_lines.append("")
+    
+    # Results Summary
+    report_lines.append("📊 Results Summary:")
+    report_lines.append(f"   Total Tests: {total_params}")
+    report_lines.append(f"   Normal: {normal_count}")
+    report_lines.append(f"   Abnormal: {abnormal_count}")
+    report_lines.append("")
+    
+    # Patient Information
     if age is not None or gender is not None:
-        report_html += f"""
-        <div style="background-color: #e8f5e8; border-left: 4px solid #28a745; padding: 15px; margin: 15px 0;">
-            <h4 style="color: #28a745;">👤 Patient Information</h4>
-            <p><strong>Age:</strong> {age if age is not None else 'Not found'}</p>
-            <p><strong>Gender:</strong> {gender if gender is not None else 'Not found'}</p>
-        </div>
-        """
+        report_lines.append("👤 Patient Information:")
+        report_lines.append(f"   Age: {age if age is not None else 'Not found'}")
+        report_lines.append(f"   Gender: {gender if gender is not None else 'Not found'}")
+        report_lines.append("")
     
-    # Add AI analysis if available
+    # AI Analysis
     if phase2_available:
         overall_status = phase2_summary.get("overall_status", "Unknown")
         risk_level = phase2_summary.get("risk_level", "Unknown")
+        ai_confidence = phase2_summary.get("ai_confidence", "Unknown")
         
-        status_color = "#28a745" if overall_status == "Normal" else "#ffc107" if "Minor" in overall_status else "#dc3545"
-        risk_color = "#28a745" if risk_level == "Low" else "#ffc107" if risk_level == "Moderate" else "#dc3545"
+        report_lines.append("🤖 AI Analysis:")
+        report_lines.append(f"   Overall Status: {overall_status}")
+        report_lines.append(f"   Risk Level: {risk_level}")
+        report_lines.append(f"   AI Confidence: {ai_confidence}")
+        report_lines.append("")
         
-        report_html += f"""
-        <div style="background-color: #e8f4fd; border-left: 4px solid #1f77b4; padding: 15px; margin: 15px 0;">
-            <h4 style="color: #1f77b4;">🤖 AI Analysis</h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                <div style="text-align: center; padding: 10px; background-color: white; border-radius: 5px;">
-                    <strong>Overall Status</strong><br>
-                    <span style="color: {status_color}; font-size: 1.2em; font-weight: bold;">{overall_status}</span>
-                </div>
-                <div style="text-align: center; padding: 10px; background-color: white; border-radius: 5px;">
-                    <strong>Risk Level</strong><br>
-                    <span style="color: {risk_color}; font-size: 1.2em; font-weight: bold;">{risk_level}</span>
-                </div>
-            </div>
-        </div>
-        """
+        # AI Recommendations
+        recommendations = phase2_summary.get("recommendations", {})
+        lifestyle_recs = recommendations.get("lifestyle", [])
+        if lifestyle_recs:
+            report_lines.append("💡 AI Recommendations:")
+            for i, rec in enumerate(lifestyle_recs, 1):
+                report_lines.append(f"   {i}. {rec}")
+            report_lines.append("")
     
-    # Add abnormal findings
+    # Abnormal Results
     abnormal_findings = interpretation.get("abnormal_parameters", [])
     if abnormal_findings:
-        report_html += """
-        <div style="background-color: #fff5f5; border-left: 4px solid #dc3545; padding: 15px; margin: 15px 0;">
-            <h4 style="color: #dc3545;">⚠️ Abnormal Results</h4>
-            <ul>
-        """
+        report_lines.append("⚠️ Abnormal Results:")
         for finding in abnormal_findings:
             status_emoji = "🔻" if finding.get("status") == "LOW" else "🔺"
-            report_html += f"""
-            <li><strong>{finding.get('parameter', 'Unknown')}</strong>: {finding.get('value', 'Unknown')} 
-                <span style="color: #dc3545;">({finding.get('status', 'Unknown')})</span> 
-                - Normal: {finding.get('reference', 'Unknown')} {status_emoji}</li>
-            """
-        report_html += "</ul></div>"
+            param_name = finding.get('parameter', 'Unknown')
+            value = finding.get('value', 'Unknown')
+            status = finding.get('status', 'Unknown')
+            reference = finding.get('reference', 'Unknown')
+            
+            report_lines.append(f"   {status_emoji} {param_name}: {value} ({status})")
+            report_lines.append(f"      Normal Range: {reference}")
+        report_lines.append("")
     
-    # Medical disclaimer
-    report_html += """
-    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin-top: 20px;">
-        <h5 style="color: #856404; margin-bottom: 10px;">⚠️ Medical Disclaimer</h5>
-        <p style="color: #856404; margin: 0; font-size: 0.9em;">
-            This analysis is for informational purposes only. Always consult healthcare professionals 
-            for medical decisions.
-        </p>
-    </div>
-    </div>
-    """
+    # Medical Disclaimer
+    report_lines.append("⚠️ Medical Disclaimer:")
+    report_lines.append("   This analysis is for informational purposes only.")
+    report_lines.append("   Always consult healthcare professionals for medical decisions.")
     
-    return report_html
+    return "\n".join(report_lines)
+
 
 
 st.set_page_config(page_title="Blood Report Analyzer", layout="wide")
@@ -387,11 +368,11 @@ if uploaded_file is not None:
             
             st.divider()
             
-            # Generate and show simplified report with Read More functionality
+            # Generate and show clean text report with Read More functionality
             st.subheader("📋 Medical Report")
             
-            # Generate the full report
-            simplified_report = generate_simplified_report(
+            # Generate the clean text report
+            clean_report = generate_clean_text_report(
                 uploaded_file.name,
                 validated_data,
                 interpretation,
@@ -406,32 +387,19 @@ if uploaded_file is not None:
             normal_count = summary_data.get("normal", 0)
             abnormal_count = summary_data.get("low", 0) + summary_data.get("high", 0)
             
-            # Show compact summary first
+            # Show compact summary first (clean text format)
             st.markdown(f"""
-            <div style="border: 2px solid #1f77b4; border-radius: 10px; padding: 15px; margin: 10px 0; background-color: #f8f9fa;">
-                <h3 style="color: #1f77b4; text-align: center; margin-bottom: 15px;">
-                    🩺 Medical Report Summary
-                </h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; text-align: center;">
-                    <div>
-                        <strong>Total Tests</strong><br>
-                        <span style="font-size: 1.5em; color: #2c3e50;">{total_params}</span>
-                    </div>
-                    <div>
-                        <strong>Normal</strong><br>
-                        <span style="font-size: 1.5em; color: #28a745;">{normal_count}</span>
-                    </div>
-                    <div>
-                        <strong>Abnormal</strong><br>
-                        <span style="font-size: 1.5em; color: #dc3545;">{abnormal_count}</span>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+**🩺 Medical Report Summary**
+
+**📊 Quick Overview:**
+- Total Tests: {total_params}
+- Normal: {normal_count}
+- Abnormal: {abnormal_count}
+            """)
             
-            # Add Read More expandable section
+            # Add Read More expandable section with clean text
             with st.expander("📄 Read More - Full Medical Report"):
-                st.markdown(simplified_report, unsafe_allow_html=True)
+                st.text(clean_report)
             
             # Download options
             col1, col2 = st.columns(2)
