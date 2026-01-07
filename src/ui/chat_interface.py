@@ -208,12 +208,29 @@ I can help you understand your blood report analysis using only your actual medi
         })
     
     def get_ai_response(self, question: str):
-        """Get AI response and add to chat history"""
+        """Get AI response with progress indicators"""
         chat_key = f"{self.session_key}_history"
         
-        # Show typing indicator
-        with st.spinner("🤔 Analyzing your question..."):
-            answer = self.qa_assistant.answer_question(question)
+        # Create progress placeholder
+        progress_placeholder = st.empty()
+        
+        def update_progress(message):
+            progress_placeholder.info(f"⚡ {message}")
+        
+        # Get response with progress updates
+        try:
+            # Check if we have the new progress method
+            if hasattr(self.qa_assistant, 'answer_question_with_progress'):
+                answer = self.qa_assistant.answer_question_with_progress(question, update_progress)
+            else:
+                # Fallback to regular method with simple progress
+                update_progress("Processing your question...")
+                answer = self.qa_assistant.answer_question(question)
+        except Exception as e:
+            answer = f"Error processing question: {str(e)}"
+        finally:
+            # Clear progress indicator
+            progress_placeholder.empty()
         
         # Add response to chat history
         st.session_state[chat_key].append({
@@ -228,6 +245,10 @@ I can help you understand your blood report analysis using only your actual medi
         chat_key = f"{self.session_key}_history"
         if chat_key in st.session_state:
             del st.session_state[chat_key]
+        
+        # Also clear Q&A assistant cache for fresh start
+        if hasattr(self.qa_assistant, 'clear_cache'):
+            self.qa_assistant.clear_cache()
         self.initialize_chat()
     
     def show_available_topics(self):

@@ -17,111 +17,178 @@ class BloodReportQAAssistant:
     def __init__(self, ollama_url: str = "http://localhost:11434"):
         self.analysis_data = None
         self.ollama_url = ollama_url
-        self.model_name = "mistral:instruct"
+        # Try smaller/faster model first, fallback to full model
+        self.model_name = "mistral:7b-instruct"  # Try specific tag
+        self.fallback_model = "mistral:instruct"
+        self._response_cache = {}  # Enhanced response caching
+        self._model_warmed_up = False  # Track model warm-up status
         
-        # Strict medical prompt template
-        self.system_prompt = """You are a Medical Report Question–Answering Assistant.
-You are NOT a general chatbot.
-You exist ONLY to answer questions about a single uploaded medical report.
-The user has already uploaded a blood report.
-The extracted and validated report data provided to you is COMPLETE, AUTHORITATIVE, and the ONLY source of truth.
+        # Ultra-streamlined prompt for maximum speed
+        self.system_prompt = """Medical AI for blood reports. Answer using ONLY report data.
 
---------------------------------------------------
-STRICT SCOPE RULES (NON-NEGOTIABLE)
---------------------------------------------------
-1. You MUST answer ONLY questions that are directly related to:
-   - Parameters in the uploaded report
-   - Their values, units, reference ranges, and status
-   - Patterns or summaries derived from the report
-   - Recommendations explicitly linked to report findings
-
-2. You MUST NOT:
-   - Answer general medical questions
-   - Use external medical knowledge
-   - Diagnose diseases
-   - Suggest medications or treatments
-   - Guess or infer missing information
-   - Hallucinate values, conditions, or causes
-
---------------------------------------------------
-UNRELATED OR OUT-OF-SCOPE QUESTIONS
---------------------------------------------------
-If the user asks ANY question that cannot be answered using the provided report data, respond EXACTLY with:
-"I can only answer questions related to the uploaded medical report."
-
---------------------------------------------------
-MISSING INFORMATION HANDLING
---------------------------------------------------
-If the user asks about something that is medical but NOT present in the report, respond with:
-"The requested information is not available in the uploaded report."
-
---------------------------------------------------
-HOW YOU MUST ANSWER
---------------------------------------------------
-- Base every answer ONLY on the provided report data
-- Keep answers clear, factual, and simple
-- Use non-alarming, informational language
-- If helpful, quote relevant parameter names and values
-- Keep responses concise and readable
-
---------------------------------------------------
-OUTPUT STYLE
---------------------------------------------------
-- Plain text response
-- No markdown
-- No emojis
-- No extra commentary
-- No medical diagnosis
-
---------------------------------------------------
-FINAL SAFETY RULE
---------------------------------------------------
-If you are unsure whether a question is allowed, ASSUME IT IS NOT and politely refuse.
+Rules: Reason from findings → discuss risks/recommendations → add safety note if needed.
+Format: Direct answer → Brief reason → Practical advice
+Safety: "Based on report, not diagnosis. Consult doctor."
 """
     
     def load_analysis_data(self, analysis_result: Dict[str, Any]) -> None:
         """Load blood report analysis data for Q&A"""
         self.analysis_data = analysis_result
+        # Warm up the model when data is loaded
+        self._warm_up_model()
     
-    def answer_question(self, question: str) -> str:
+    def _warm_up_model(self) -> None:
+        """Warm up the Mistral model for faster subsequent responses"""
+        if self._model_warmed_up or not self._is_ollama_available():
+            return
+        
+        try:
+            # Send a simple warm-up query
+            warm_up_payload = {
+                "model": self.model_name,
+                "prompt": "Hello",
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "max_tokens": 10,
+                    "num_predict": 10,
+                    "num_ctx": 512
+                }
+            }
+            
+            requests.post(
+                f"{self.ollama_url}/api/generate",
+                json=warm_up_payload,
+                timeout=10
+            )
+            self._model_warmed_up = True
+        except Exception:
+            pass  # Warm-up is optional
+    
+    def answer_question(self, question: str, use_streaming: bool = False) -> str:
         """
-        Answer a question using Mistral LLM with strict medical prompting
+        Answer a question using Mistral LLM with aggressive speed optimizations
+        Target: 3-8 seconds response time
         """
         if not self.analysis_data:
             return "No blood report analysis data is currently loaded."
+        
+        # Preprocess question for better performance
+        processed_question = self._preprocess_question(question)
+        
+        # Enhanced caching with question similarity
+        cache_key = self._get_cache_key(processed_question)
+        if cache_key in self._response_cache:
+            return self._response_cache[cache_key]
         
         # Check if Ollama is available
         if not self._is_ollama_available():
             return "AI service is not available. Please ensure Ollama is running with Mistral model."
         
         # Extract report data for the prompt
-        report_data = self._extract_report_data()
+        report_data = self._extract_report_data_optimized()
         if not report_data:
             return "No report data available for analysis."
         
-        # Create the full prompt
-        full_prompt = self._create_prompt(report_data, question)
+        # Create the streamlined prompt
+        full_prompt = self._create_optimized_prompt(report_data, processed_question)
         
-        # Send to Mistral LLM
+        # Send to Mistral LLM with speed optimizations
         try:
-            response = self._query_mistral(full_prompt)
+            response = self._query_mistral_fast(full_prompt)
+            
+            # Cache the response for future speed (use original question for cache key)
+            original_cache_key = self._get_cache_key(question)
+            self._response_cache[cache_key] = response
+            self._response_cache[original_cache_key] = response  # Cache both versions
+            
+            # Limit cache size to prevent memory issues
+            if len(self._response_cache) > 100:
+                # Remove oldest entries
+                oldest_keys = list(self._response_cache.keys())[:20]
+                for key in oldest_keys:
+                    del self._response_cache[key]
+            
             return response
         except Exception as e:
             return f"Error processing question: {str(e)}"
     
+    def _get_cache_key(self, question: str) -> str:
+        """Generate cache key with aggressive question normalization for better cache hits"""
+        # Aggressive normalization for better cache hits
+        normalized = question.lower().strip()
+        
+        # Remove common question words and variations
+        remove_words = ["what is", "tell me about", "can you", "please", "?", ".", "my", "the"]
+        for word in remove_words:
+            normalized = normalized.replace(word, "")
+        
+        # Normalize medical terms
+        medical_normalizations = {
+            "hemoglobin": "hb",
+            "cholesterol": "chol",
+            "blood sugar": "glucose",
+            "white blood cells": "wbc",
+            "red blood cells": "rbc"
+        }
+        
+        for full_term, short_term in medical_normalizations.items():
+            normalized = normalized.replace(full_term, short_term)
+        
+        # Remove extra spaces
+        normalized = " ".join(normalized.split())
+        
+        return f"{normalized}_{hash(str(self.analysis_data))}"
+    
+    def _preprocess_question(self, question: str) -> str:
+        """Preprocess question to make it more direct and faster to process"""
+        # Make questions more direct for faster processing
+        question = question.strip()
+        
+        # Convert complex questions to simpler forms
+        simplifications = {
+            "what are the health risks": "risks",
+            "what foods should i eat": "food recommendations", 
+            "are there any abnormal": "abnormal values",
+            "tell me about my": "",
+            "what is my": "",
+            "can you explain": "explain"
+        }
+        
+        question_lower = question.lower()
+        for complex_phrase, simple_phrase in simplifications.items():
+            if complex_phrase in question_lower:
+                question = question_lower.replace(complex_phrase, simple_phrase).strip()
+                break
+        
+        return question
+    
     def _is_ollama_available(self) -> bool:
-        """Check if Ollama service is available"""
+        """Check if Ollama service is available with fast model detection"""
         try:
-            response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            response = requests.get(f"{self.ollama_url}/api/tags", timeout=3)
             if response.status_code == 200:
                 models = response.json().get("models", [])
-                return any("mistral" in model.get("name", "").lower() for model in models)
+                model_names = [model.get("name", "").lower() for model in models]
+                
+                # Check for preferred fast model first
+                if any(self.model_name.lower() in name for name in model_names):
+                    return True
+                # Fallback to any mistral model
+                elif any("mistral" in name for name in model_names):
+                    # Update to use available model
+                    for name in model_names:
+                        if "mistral" in name:
+                            self.model_name = models[model_names.index(name)].get("name", self.fallback_model)
+                            break
+                    return True
+                return False
             return False
         except Exception:
             return False
     
-    def _extract_report_data(self) -> str:
-        """Extract and format report data for the prompt"""
+    def _extract_report_data_optimized(self) -> str:
+        """Extract and format report data optimized for faster processing"""
         try:
             # Get parameter data from analysis
             parameters = []
@@ -131,61 +198,65 @@ If you are unsure whether a question is allowed, ASSUME IT IS NOT and politely r
                 interpretations = param_interp.get('interpretations', [])
                 
                 for interp in interpretations:
+                    # Streamlined parameter data
                     param_data = {
-                        'test_name': interp.get('test_name', 'Unknown'),
+                        'name': interp.get('test_name', 'Unknown'),
                         'value': interp.get('value', 'Unknown'),
                         'unit': interp.get('unit', ''),
-                        'reference_range': interp.get('reference_range', 'Unknown'),
-                        'classification': interp.get('classification', 'Unknown')
+                        'range': interp.get('reference_range', 'Unknown'),
+                        'status': interp.get('classification', 'Unknown')
                     }
                     parameters.append(param_data)
             
-            # Format as structured text
+            # Compact format for faster processing
             if parameters:
-                report_text = "BLOOD REPORT PARAMETERS:\n"
-                for param in parameters:
-                    unit_text = f" {param['unit']}" if param['unit'] else ""
-                    report_text += f"- {param['test_name']}: {param['value']}{unit_text} "
-                    report_text += f"(Reference: {param['reference_range']}, Status: {param['classification']})\n"
+                # Prioritize abnormal values for faster relevance
+                abnormal_params = [p for p in parameters if p['status'] != 'Normal']
+                normal_params = [p for p in parameters if p['status'] == 'Normal']
                 
-                # Add summary
-                total_params = len(parameters)
-                normal_count = sum(1 for p in parameters if p['classification'] == 'Normal')
-                high_count = sum(1 for p in parameters if p['classification'] == 'High')
-                low_count = sum(1 for p in parameters if p['classification'] == 'Low')
+                report_text = "REPORT:\n"
                 
-                report_text += f"\nSUMMARY:\n"
-                report_text += f"- Total Parameters: {total_params}\n"
-                report_text += f"- Normal: {normal_count}\n"
-                report_text += f"- High: {high_count}\n"
-                report_text += f"- Low: {low_count}\n"
+                # Show abnormal first (more relevant for questions)
+                if abnormal_params:
+                    report_text += "ABNORMAL:\n"
+                    for p in abnormal_params[:8]:  # Limit for speed
+                        unit = f" {p['unit']}" if p['unit'] else ""
+                        report_text += f"{p['name']}: {p['value']}{unit} ({p['status']}, Normal: {p['range']})\n"
+                
+                # Show some normal values
+                if normal_params:
+                    report_text += "NORMAL:\n"
+                    for p in normal_params[:5]:  # Fewer normal values
+                        unit = f" {p['unit']}" if p['unit'] else ""
+                        report_text += f"{p['name']}: {p['value']}{unit}\n"
+                
+                # Quick summary
+                total = len(parameters)
+                abnormal_count = len(abnormal_params)
+                report_text += f"\nSUMMARY: {abnormal_count}/{total} abnormal\n"
                 
                 return report_text
             else:
-                return "No parameter data available in the report."
+                return "No parameter data available."
                 
         except Exception as e:
-            return f"Error extracting report data: {str(e)}"
+            return f"Error: {str(e)}"
     
-    def _create_prompt(self, report_data: str, question: str) -> str:
-        """Create the full prompt for Mistral LLM"""
+    def _create_optimized_prompt(self, report_data: str, question: str) -> str:
+        """Create streamlined prompt for faster LLM processing"""
+        # Compact prompt format
         prompt = f"""{self.system_prompt}
 
---------------------------------------------------
-BEGIN
---------------------------------------------------
-REFERENCE MEDICAL REPORT DATA:
+DATA:
 {report_data}
 
-USER QUESTION:
-{question}
-
-RESPONSE:"""
+Q: {question}
+A:"""
         
         return prompt
     
-    def _query_mistral(self, prompt: str) -> str:
-        """Send prompt to Mistral LLM via Ollama"""
+    def _query_mistral_fast(self, prompt: str) -> str:
+        """Ultra-optimized Mistral query for maximum speed"""
         try:
             # Store the prompt for debugging
             self._last_prompt = prompt
@@ -195,17 +266,22 @@ RESPONSE:"""
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,  # Low temperature for consistent, factual responses
-                    "top_p": 0.9,
-                    "max_tokens": 500,   # Limit response length
-                    "stop": ["USER QUESTION:", "REFERENCE MEDICAL REPORT DATA:"]
+                    "temperature": 0.1,      # Very low for speed and consistency
+                    "top_p": 0.7,            # More focused
+                    "max_tokens": 250,       # Shorter responses for speed
+                    "num_predict": 250,      # Match max_tokens
+                    "num_ctx": 512,          # Very small context window for speed
+                    "repeat_penalty": 1.0,   # No penalty for speed
+                    "top_k": 10,             # Very limited vocabulary for speed
+                    "num_thread": 4,         # Use multiple threads
+                    "stop": ["Q:", "DATA:", "A:", "\n\nQ:", "\n\nDATA:", "Question:", "Answer:"]
                 }
             }
             
             response = requests.post(
                 f"{self.ollama_url}/api/generate",
                 json=payload,
-                timeout=30
+                timeout=10  # Aggressive timeout for speed
             )
             
             if response.status_code == 200:
@@ -214,18 +290,23 @@ RESPONSE:"""
                 
                 # Clean up the response
                 if answer:
-                    # Remove any system prompt leakage
-                    if "RESPONSE:" in answer:
-                        answer = answer.split("RESPONSE:")[-1].strip()
+                    # Remove any prompt leakage
+                    for stop_word in ["A:", "Answer:", "DATA:", "Q:"]:
+                        if stop_word in answer:
+                            answer = answer.split(stop_word)[-1].strip()
                     
-                    return answer
+                    # Ensure reasonable length for speed
+                    if len(answer) > 800:
+                        answer = answer[:800] + "..."
+                    
+                    return answer if answer else "Response generated but empty."
                 else:
                     return "No response generated from the AI model."
             else:
                 return f"Error from AI service: {response.status_code}"
                 
         except requests.exceptions.Timeout:
-            return "AI service timeout. Please try again."
+            return "AI service timeout. The model may be busy - please try again."
         except Exception as e:
             return f"Error communicating with AI service: {str(e)}"
     
@@ -237,20 +318,32 @@ RESPONSE:"""
         try:
             # Extract parameter names from analysis
             parameters = []
+            abnormal_params = []
+            
             if 'phase2_full_result' in self.analysis_data:
                 param_interp = self.analysis_data['phase2_full_result'].get('parameter_interpretation', {})
                 interpretations = param_interp.get('interpretations', [])
-                parameters = [interp.get('test_name', 'Unknown') for interp in interpretations]
+                
+                for interp in interpretations:
+                    param_name = interp.get('test_name', 'Unknown')
+                    classification = interp.get('classification', 'Unknown')
+                    parameters.append(param_name)
+                    if classification != 'Normal':
+                        abnormal_params.append(f"{param_name} ({classification})")
             
             if parameters:
                 topics = [
-                    "Individual parameter values and status",
-                    "Parameters above or below normal ranges", 
-                    "Overall report summary",
-                    f"Available parameters: {', '.join(parameters[:5])}"
+                    "Overall health summary and patterns",
+                    "Abnormal values and their implications",
+                    "Diet and lifestyle recommendations",
+                    "Risk factors and health concerns"
                 ]
-                if len(parameters) > 5:
-                    topics[-1] += f" and {len(parameters) - 5} others"
+                
+                if abnormal_params:
+                    topics.append(f"Specific abnormal findings: {', '.join(abnormal_params[:3])}")
+                    if len(abnormal_params) > 3:
+                        topics[-1] += f" and {len(abnormal_params) - 3} others"
+                
                 return topics
             else:
                 return ["No parameter data available"]
@@ -260,8 +353,74 @@ RESPONSE:"""
     
     def get_last_prompt(self) -> str:
         """Get the last prompt sent to the LLM (for debugging)"""
-        # This would be set by _query_mistral if we want to track it
         return getattr(self, '_last_prompt', "No prompt available")
+    
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Get performance statistics"""
+        return {
+            "cache_size": len(self._response_cache),
+            "model_warmed_up": self._model_warmed_up,
+            "ollama_available": self._is_ollama_available(),
+            "estimated_response_time": "3-8 seconds (optimized)"
+        }
+    
+    def clear_cache(self) -> None:
+        """Clear response cache to free memory"""
+        self._response_cache.clear()
+    
+    def answer_question_with_progress(self, question: str, progress_callback=None) -> str:
+        """
+        Answer question with progress updates for better user experience
+        """
+        if progress_callback:
+            progress_callback("🔍 Analyzing question...")
+        
+        if not self.analysis_data:
+            return "No blood report analysis data is currently loaded."
+        
+        # Preprocess question
+        processed_question = self._preprocess_question(question)
+        
+        # Check cache first
+        cache_key = self._get_cache_key(processed_question)
+        if cache_key in self._response_cache:
+            if progress_callback:
+                progress_callback("✅ Found cached response")
+            return self._response_cache[cache_key]
+        
+        if progress_callback:
+            progress_callback("🤖 Connecting to AI service...")
+        
+        if not self._is_ollama_available():
+            return "AI service is not available. Please ensure Ollama is running with Mistral model."
+        
+        if progress_callback:
+            progress_callback("📊 Processing report data...")
+        
+        # Extract and process data
+        report_data = self._extract_report_data_optimized()
+        if not report_data:
+            return "No report data available for analysis."
+        
+        if progress_callback:
+            progress_callback("🧠 Generating AI response...")
+        
+        # Generate response
+        try:
+            full_prompt = self._create_optimized_prompt(report_data, processed_question)
+            response = self._query_mistral_fast(full_prompt)
+            
+            # Cache the response (both processed and original question)
+            original_cache_key = self._get_cache_key(question)
+            self._response_cache[cache_key] = response
+            self._response_cache[original_cache_key] = response
+            
+            if progress_callback:
+                progress_callback("✅ Response ready!")
+            
+            return response
+        except Exception as e:
+            return f"Error processing question: {str(e)}"
 
 
 # Convenience function for integration

@@ -18,731 +18,737 @@ if os.name == 'nt':  # Windows
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 
-def preprocess_image(image):
-    """Enhance image quality for better OCR"""
-    img_array = np.array(image)
+class MedicalOCROrchestrator:
+    """
+    Medical OCR Orchestration Agent - Enhanced for robust image processing
+    Implements multiple OCR strategies and aggressive preprocessing for challenging images
+    """
     
-    # Convert to grayscale
-    if len(img_array.shape) == 3:
-        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    else:
-        gray = img_array
+    def __init__(self):
+        self.min_text_length = 10  # Further reduced for very short medical texts
+        self.min_confidence_threshold = 0.4  # More lenient for real-world images
+        self.medical_parameter_patterns = [
+            r'(?i)hemoglobin|hb|hgb',
+            r'(?i)rbc|red blood cell',
+            r'(?i)wbc|white blood cell',
+            r'(?i)platelet|plt',
+            r'(?i)glucose|blood sugar',
+            r'(?i)cholesterol|chol',
+            r'(?i)creatinine|creat',
+            r'(?i)neutrophil|lymphocyte|eosinophil|monocyte|basophil',
+            r'(?i)mcv|mch|mchc|rdw',
+            r'(?i)bun|urea',
+            r'(?i)alt|ast|sgpt|sgot',
+            r'(?i)\bglucose\b|\bchol\b',
+            # Additional patterns for common variations
+            r'(?i)total\s+count|count',
+            r'(?i)level|levels',
+            r'(?i)mg/dl|g/dl|/ul|/cumm',
+            r'(?i)normal|high|low',
+            r'(?i)test|result|value'
+        ]
+        
+        # Enhanced preprocessing strategies
+        self.preprocessing_strategies = [
+            'standard',
+            'high_contrast',
+            'denoised',
+            'sharpened',
+            'morphological',
+            'adaptive_bilateral'
+        ]
     
-    # Apply thresholding
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    # Denoise
-    denoised = cv2.fastNlMeansDenoising(thresh)
-    
-    # Convert back to PIL
-    return Image.fromarray(denoised)
-
-
-def normalize_parameter_name(name):
-    """Normalize parameter names to standard format"""
-    name_map = {
-        'hb': 'Hemoglobin',
-        'hgb': 'Hemoglobin',
-        'hemoglobin': 'Hemoglobin',
-        'rbc': 'RBC',
-        'red blood cell': 'RBC',
-        'red blood cells': 'RBC',
-        'wbc': 'WBC',
-        'white blood cell': 'WBC',
-        'white blood cells': 'WBC',
-        'plt': 'Platelet',
-        'platelets': 'Platelet',
-        'platelet count': 'Platelet',
-        'glucose': 'Glucose',
-        'blood sugar': 'Glucose',
-        'cholesterol': 'Cholesterol',
-        'chol': 'Cholesterol',
-        'creatinine': 'Creatinine',
-        'creat': 'Creatinine',
-        'bun': 'BUN',
-        'urea': 'BUN',
-        'ph': 'pH',
-        'PH': 'pH',
-    }
-    
-    normalized = name.lower().strip()
-    return name_map.get(normalized, name.strip())
-
-
-def estimate_confidence(line, value):
-    """Estimate confidence based on text clarity"""
-    confidence = 0.8  # Base confidence
-    
-    # Reduce confidence for unclear patterns
-    if '?' in line or 'unclear' in line.lower():
-        confidence -= 0.3
-    if len(line.strip()) < 5:
-        confidence -= 0.2
-    if not re.search(r'\d', str(value)):
-        confidence -= 0.1
-    
-    return max(0.1, min(1.0, confidence))
-
-
-def reconstruct_broken_tables(text):
-    """Reconstruct broken tables and misaligned rows"""
-    lines = text.split('\n')
-    reconstructed_lines = []
-    
-    # Buffer for potential table rows
-    table_buffer = []
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-            
-        # Detect potential table row (multiple numeric values or structured data)
-        if re.search(r'\d+\.?\d*.*\d+\.?\d*', line) or len(re.findall(r'\s{2,}', line)) > 1:
-            table_buffer.append(line)
+    def determine_file_type(self, uploaded_file):
+        """
+        STEP 1: Determine file type and processing strategy
+        """
+        file_type = uploaded_file.type
+        file_name = uploaded_file.name.lower()
+        
+        if file_type == "application/pdf":
+            return "pdf"
+        elif file_type in ["image/png", "image/jpeg", "image/jpg"]:
+            return "image"
+        elif file_name.endswith('.pdf'):
+            return "pdf"
+        elif file_name.endswith(('.png', '.jpg', '.jpeg')):
+            return "image"
         else:
-            # Process accumulated table buffer
-            if table_buffer:
-                reconstructed_lines.extend(process_table_buffer(table_buffer))
-                table_buffer = []
-            reconstructed_lines.append(line)
+            return "unsupported"
     
-    # Process remaining buffer
-    if table_buffer:
-        reconstructed_lines.extend(process_table_buffer(table_buffer))
-    
-    return '\n'.join(reconstructed_lines)
-
-
-def process_table_buffer(buffer):
-    """Process potential table rows to reconstruct broken entries"""
-    processed = []
-    
-    for line in buffer:
-        # Split by multiple spaces (table columns)
-        parts = re.split(r'\s{2,}', line)
-        
-        if len(parts) >= 2:
-            # Reconstruct as "parameter value unit range"
-            param_name = parts[0].strip()
-            value = parts[1].strip()
-            unit = parts[2].strip() if len(parts) > 2 else ""
-            ref_range = parts[3].strip() if len(parts) > 3 else ""
+    def extract_text_from_pdf_direct(self, pdf_path):
+        """
+        Extract text directly from text-based PDF
+        """
+        try:
+            digital_text = ""
+            with pdfplumber.open(pdf_path) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        digital_text += page_text + "\n"
             
-            # Reconstruct line
-            reconstructed = f"{param_name} {value}"
-            if unit:
-                reconstructed += f" {unit}"
-            if ref_range:
-                reconstructed += f" ({ref_range})"
-                
-            processed.append(reconstructed)
+            return digital_text.strip()
+        except Exception as e:
+            return ""
+    
+    def is_text_sufficient(self, text):
+        """
+        Check if extracted text is sufficient (Rule 2)
+        """
+        if not text or len(text.strip()) < self.min_text_length:
+            return False
+        
+        # Check for presence of medical parameters
+        text_lower = text.lower()
+        medical_param_found = any(
+            re.search(pattern, text_lower) 
+            for pattern in self.medical_parameter_patterns
+        )
+        
+        return medical_param_found
+    
+    def preprocess_image_advanced(self, image, strategy='standard'):
+        """
+        ROBUST image preprocessing with multiple strategies for challenging images
+        """
+        # Convert PIL to numpy array
+        img_array = np.array(image)
+        
+        # Convert to grayscale if needed
+        if len(img_array.shape) == 3:
+            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
         else:
-            processed.append(line)
+            gray = img_array
+        
+        # Apply different preprocessing strategies
+        if strategy == 'standard':
+            return self._preprocess_standard(gray)
+        elif strategy == 'high_contrast':
+            return self._preprocess_high_contrast(gray)
+        elif strategy == 'denoised':
+            return self._preprocess_denoised(gray)
+        elif strategy == 'sharpened':
+            return self._preprocess_sharpened(gray)
+        elif strategy == 'morphological':
+            return self._preprocess_morphological(gray)
+        elif strategy == 'adaptive_bilateral':
+            return self._preprocess_adaptive_bilateral(gray)
+        else:
+            return self._preprocess_standard(gray)
     
-    return processed
-
-
-def extract_medical_parameters(text):
-    """Extract ALL medical parameters with table reconstruction and multi-column support"""
-    # Step 1: Reconstruct broken tables
-    reconstructed_text = reconstruct_broken_tables(text)
+    def _preprocess_standard(self, gray):
+        """Standard preprocessing"""
+        # Bilateral filter for noise reduction
+        denoised = cv2.bilateralFilter(gray, 9, 75, 75)
+        
+        # Adaptive thresholding
+        adaptive_thresh = cv2.adaptiveThreshold(
+            denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+            cv2.THRESH_BINARY, 11, 2
+        )
+        
+        return Image.fromarray(adaptive_thresh)
     
-    parameters = []
-    lines = reconstructed_text.split('\n')
-    found_params = set()  # Track to avoid duplicates
+    def _preprocess_high_contrast(self, gray):
+        """High contrast preprocessing for faded images"""
+        # Histogram equalization
+        equalized = cv2.equalizeHist(gray)
+        
+        # CLAHE for local contrast enhancement
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        enhanced = clahe.apply(equalized)
+        
+        # Aggressive thresholding
+        _, thresh = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        return Image.fromarray(thresh)
     
-    # Enhanced extraction patterns for all scenarios
-    patterns = [
-        # Basic patterns
-        r'([A-Za-z][A-Za-z\s]{1,30}?)\s*[:\-]?\s*(\d+\.?\d*)\s*([a-zA-Z/µμ%]*)\s*(?:\(([^)]+)\))?',
+    def _preprocess_denoised(self, gray):
+        """Heavy denoising for noisy images"""
+        # Multiple denoising passes
+        denoised1 = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+        denoised2 = cv2.bilateralFilter(denoised1, 15, 80, 80)
         
-        # Range patterns
-        r'([A-Za-z][A-Za-z\s]{1,30}?)\s+(\d+\.?\d*\s*[-–]\s*\d+\.?\d*)',
+        # Gentle thresholding
+        adaptive_thresh = cv2.adaptiveThreshold(
+            denoised2, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
+            cv2.THRESH_BINARY, 15, 8
+        )
         
-        # Boolean patterns
-        r'([A-Za-z][A-Za-z\s]{1,30}?)\s*[:\-]?\s*(Present|Absent|Positive|Negative|Yes|No|Normal|Abnormal|\+|\-)',
-        
-        # Symbol patterns
-        r'([A-Za-z][A-Za-z\s]{1,30}?)\s*\(([+-])\)',
-        
-        # Multi-column table patterns
-        r'([A-Za-z][A-Za-z\s]{1,30}?)\s{2,}(\d+\.?\d*|\w+)\s*([a-zA-Z/µμ%]*)\s*(\d+\.?\d*\s*[-–]\s*\d+\.?\d*)?',
-        
-        # Colon separated with optional units
-        r'([A-Za-z][A-Za-z\s]{1,30}?)\s*:\s*(\d+\.?\d*|\w+)\s*([a-zA-Z/µμ%]*)',
-        
-        # Loose matching for low-confidence text
-        r'([A-Za-z]{3,})\s+(\d+\.?\d*)',
-    ]
+        return Image.fromarray(adaptive_thresh)
     
-    for line in lines:
-        line = line.strip()
-        if len(line) < 3:
-            continue
+    def _preprocess_sharpened(self, gray):
+        """Sharpening for blurry images"""
+        # Unsharp masking
+        gaussian = cv2.GaussianBlur(gray, (0, 0), 2.0)
+        sharpened = cv2.addWeighted(gray, 1.5, gaussian, -0.5, 0)
+        
+        # Adaptive thresholding
+        adaptive_thresh = cv2.adaptiveThreshold(
+            sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+            cv2.THRESH_BINARY, 11, 2
+        )
+        
+        return Image.fromarray(adaptive_thresh)
+    
+    def _preprocess_morphological(self, gray):
+        """Morphological operations for text cleanup"""
+        # Initial thresholding
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # Morphological operations
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        
+        # Remove noise
+        opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+        
+        # Fill gaps
+        closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel, iterations=1)
+        
+        return Image.fromarray(closing)
+    
+    def _preprocess_adaptive_bilateral(self, gray):
+        """Adaptive bilateral filtering"""
+        # Multiple bilateral filter passes with different parameters
+        filtered1 = cv2.bilateralFilter(gray, 5, 50, 50)
+        filtered2 = cv2.bilateralFilter(filtered1, 9, 75, 75)
+        filtered3 = cv2.bilateralFilter(filtered2, 13, 100, 100)
+        
+        # Adaptive thresholding with larger neighborhood
+        adaptive_thresh = cv2.adaptiveThreshold(
+            filtered3, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+            cv2.THRESH_BINARY, 21, 10
+        )
+        
+        return Image.fromarray(adaptive_thresh)
+    
+    def perform_ocr_with_validation(self, image):
+        """
+        ROBUST OCR execution with multiple strategies and preprocessing approaches
+        """
+        best_result = None
+        best_confidence = 0
+        all_results = []
+        
+        # OCR configurations optimized for different scenarios
+        ocr_configs = [
+            # Medical table configurations
+            {
+                'config': r'--oem 3 --psm 6 -l eng -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,-/():% ',
+                'description': 'Medical table optimized'
+            },
+            # Single column configuration
+            {
+                'config': r'--oem 3 --psm 4 -l eng',
+                'description': 'Single column'
+            },
+            # Sparse text configuration
+            {
+                'config': r'--oem 3 --psm 8 -l eng',
+                'description': 'Sparse text'
+            },
+            # Automatic page segmentation
+            {
+                'config': r'--oem 3 --psm 3 -l eng',
+                'description': 'Automatic segmentation'
+            },
+            # Single text line
+            {
+                'config': r'--oem 3 --psm 7 -l eng',
+                'description': 'Single text line'
+            },
+            # Raw line without specific structure
+            {
+                'config': r'--oem 3 --psm 13 -l eng',
+                'description': 'Raw line'
+            }
+        ]
+        
+        # Try each preprocessing strategy
+        for strategy in self.preprocessing_strategies:
+            try:
+                # Preprocess image with current strategy
+                processed_image = self.preprocess_image_advanced(image, strategy)
+                
+                # Try each OCR configuration
+                for ocr_config in ocr_configs:
+                    try:
+                        # Get OCR data with confidence scores
+                        ocr_data = pytesseract.image_to_data(
+                            processed_image, 
+                            config=ocr_config['config'],
+                            output_type=pytesseract.Output.DICT
+                        )
+                        
+                        # Extract text
+                        text = pytesseract.image_to_string(
+                            processed_image, 
+                            config=ocr_config['config']
+                        )
+                        
+                        # Calculate average confidence
+                        confidences = [int(conf) for conf in ocr_data['conf'] if int(conf) > 0]
+                        avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+                        
+                        # Store result
+                        result = {
+                            'text': text.strip(),
+                            'confidence': avg_confidence / 100.0,  # Convert to 0-1 scale
+                            'config_used': f"{strategy} + {ocr_config['description']}",
+                            'strategy': strategy,
+                            'ocr_config': ocr_config['description']
+                        }
+                        
+                        all_results.append(result)
+                        
+                        # Check if this is the best result so far
+                        if (len(text.strip()) > 10 and 
+                            avg_confidence > best_confidence * 100):
+                            best_confidence = avg_confidence
+                            best_result = result
+                            
+                    except Exception as e:
+                        continue
+                        
+            except Exception as e:
+                continue
+        
+        # If no good result found, try to find the best available
+        if not best_result and all_results:
+            # Sort by text length and confidence
+            all_results.sort(key=lambda x: (len(x['text']), x['confidence']), reverse=True)
+            best_result = all_results[0]
+        
+        # Enhanced result with all attempts info
+        if best_result:
+            best_result['total_attempts'] = len(all_results)
+            best_result['all_strategies_tried'] = self.preprocessing_strategies
+        
+        return best_result
+    
+    def validate_ocr_output(self, ocr_result):
+        """
+        ENHANCED validation for OCR output - more lenient for real-world images
+        """
+        if not ocr_result:
+            return False, "OCR failed to produce any result"
+        
+        text = ocr_result.get('text', '')
+        confidence = ocr_result.get('confidence', 0)
+        
+        # More lenient validation for challenging images
+        
+        # Check minimum text length (reduced threshold)
+        if len(text.strip()) < self.min_text_length:
+            return False, f"Text too short: {len(text.strip())} < {self.min_text_length} characters"
+        
+        # Check for ANY medical-related content (more flexible)
+        text_lower = text.lower()
+        medical_indicators = []
+        
+        # Check for medical parameters
+        for pattern in self.medical_parameter_patterns:
+            if re.search(pattern, text_lower):
+                medical_indicators.append("medical_parameter")
+                break
+        
+        # Check for numeric values (medical reports should have measurements)
+        numeric_values = re.findall(r'\d+\.?\d*', text)
+        if len(numeric_values) >= 1:  # Reduced from 3 to 1
+            medical_indicators.append("numeric_values")
+        
+        # Check for medical units
+        medical_units = re.findall(r'(?i)(mg/dl|g/dl|/ul|/cumm|%|percent)', text)
+        if medical_units:
+            medical_indicators.append("medical_units")
+        
+        # Check for medical keywords
+        medical_keywords = re.findall(r'(?i)(test|result|normal|high|low|range|level|count)', text)
+        if medical_keywords:
+            medical_indicators.append("medical_keywords")
+        
+        # Check for table-like structure
+        if re.search(r'\d+\.?\d*\s+\d+\.?\d*', text) or len(re.findall(r'\s{2,}', text)) > 2:
+            medical_indicators.append("table_structure")
+        
+        # More flexible validation - need at least 1 indicator
+        if not medical_indicators:
+            return False, f"No medical content detected. Text preview: '{text[:100]}...'"
+        
+        # Confidence check (more lenient)
+        if confidence < self.min_confidence_threshold:
+            # If we have strong medical indicators, be more lenient with confidence
+            if len(medical_indicators) >= 2:
+                return True, f"Low confidence ({confidence:.2f}) but strong medical indicators: {', '.join(medical_indicators)}"
+            else:
+                return False, f"OCR confidence too low: {confidence:.2f} < {self.min_confidence_threshold}"
+        
+        return True, f"Validation passed: {len(medical_indicators)} medical indicators ({', '.join(medical_indicators)}), {len(numeric_values)} numeric values, confidence: {confidence:.2f}"
+    
+    def process_file(self, uploaded_file):
+        """
+        Main orchestration method - implements all rules
+        """
+        # STEP 1: Determine file type
+        file_type = self.determine_file_type(uploaded_file)
+        
+        if file_type == "unsupported":
+            return self.create_error_response(
+                "Unsupported file type. Please upload PDF, PNG, JPG, or JPEG files."
+            )
+        
+        # Create temporary file
+        try:
+            if file_type == "pdf":
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+                    temp_file.write(uploaded_file.read())
+                    temp_file_path = temp_file.name
+            else:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+                    temp_file.write(uploaded_file.read())
+                    temp_file_path = temp_file.name
+        except Exception as e:
+            return self.create_error_response(f"File processing error: {str(e)}")
+        
+        try:
+            if file_type == "pdf":
+                return self.process_pdf_file(temp_file_path)
+            else:
+                return self.process_image_file(temp_file_path)
+        finally:
+            # Cleanup temporary file
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
+    
+    def process_pdf_file(self, pdf_path):
+        """
+        Process PDF file according to Rules 2-3
+        """
+        # STEP 2: Try direct text extraction first
+        digital_text = self.extract_text_from_pdf_direct(pdf_path)
+        
+        if self.is_text_sufficient(digital_text):
+            # Text-based PDF with sufficient content
+            return self.create_success_response(
+                digital_text, 
+                extraction_method="direct_text",
+                confidence=0.95
+            )
+        
+        # STEP 3: Fallback to OCR for scanned PDF
+        try:
+            # Convert PDF pages to images
+            pages = convert_from_path(pdf_path, dpi=300)  # High resolution
             
-        # Try each pattern
-        for pattern in patterns:
-            matches = re.finditer(pattern, line, re.IGNORECASE)
-            for match in matches:
-                param_name = match.group(1).strip()
-                value = match.group(2).strip()
+            combined_ocr_result = {
+                'text': '',
+                'confidence': 0,
+                'config_used': 'multi-page'
+            }
+            
+            total_confidence = 0
+            valid_pages = 0
+            
+            for page_num, page_image in enumerate(pages):
+                ocr_result = self.perform_ocr_with_validation(page_image)
                 
-                # Skip generic terms
-                if len(param_name) < 2 or param_name.lower() in ['test', 'result', 'value', 'normal', 'range']:
-                    continue
+                if ocr_result:
+                    is_valid, validation_msg = self.validate_ocr_output(ocr_result)
+                    
+                    if is_valid:
+                        combined_ocr_result['text'] += f"\n--- Page {page_num + 1} ---\n"
+                        combined_ocr_result['text'] += ocr_result['text']
+                        total_confidence += ocr_result['confidence']
+                        valid_pages += 1
+            
+            if valid_pages > 0:
+                combined_ocr_result['confidence'] = total_confidence / valid_pages
                 
-                # Normalize parameter name
-                normalized_name = normalize_parameter_name(param_name)
-                
-                # Skip duplicates
-                if normalized_name in found_params:
-                    continue
-                
-                # Extract additional fields
-                unit = ""
-                ref_range = ""
-                
-                if len(match.groups()) > 2 and match.group(3):
-                    potential_unit = match.group(3).strip()
-                    if re.match(r'\d+\.?\d*\s*[-–]\s*\d+\.?\d*', potential_unit):
-                        ref_range = potential_unit
-                    else:
-                        unit = potential_unit
-                
-                if len(match.groups()) > 3 and match.group(4):
-                    ref_range = match.group(4).strip()
-                
-                # Handle special values (never change original values)
-                original_value = value
-                if value.lower() in ['present', 'positive', 'yes', 'true', 'normal', '+']:
-                    value = "Present"
-                    if not ref_range:
-                        ref_range = "Absent"
-                elif value.lower() in ['absent', 'negative', 'no', 'false', 'abnormal', '-']:
-                    value = "Absent"
-                    if not ref_range:
-                        ref_range = "Present"
-                
-                # Validate numeric values (but don't skip low-confidence)
-                is_valid = True
-                try:
-                    if value not in ["Present", "Absent"]:
-                        float_val = float(value)
-                        # Very permissive range for medical values
-                        if not (0.0001 <= float_val <= 10000000):
-                            is_valid = False
-                except ValueError:
-                    # Non-numeric values are acceptable
-                    pass
+                # Final validation of combined result
+                is_valid, validation_msg = self.validate_ocr_output(combined_ocr_result)
                 
                 if is_valid:
-                    # Calculate confidence
-                    confidence = estimate_confidence(line, original_value)
-                    
-                    parameters.append({
-                        "name": normalized_name,
-                        "value": value,
-                        "unit": unit if unit else "",
-                        "reference_range": ref_range if ref_range else "",
-                        "raw_text": line,
-                        "confidence": f"{confidence:.2f}"
-                    })
-                    
-                    found_params.add(normalized_name)
-                    break  # Move to next line
+                    return self.create_success_response(
+                        combined_ocr_result['text'],
+                        extraction_method="ocr_scanned_pdf",
+                        confidence=combined_ocr_result['confidence'],
+                        validation_message=validation_msg
+                    )
+                else:
+                    return self.create_low_confidence_response(validation_msg)
+            else:
+                return self.create_low_confidence_response("No valid pages found in PDF")
+                
+        except Exception as e:
+            return self.create_error_response(f"PDF OCR processing failed: {str(e)}")
     
-    return parameters
-
-
-def convert_to_json_format(text):
-    """Convert extracted text through multiple specialized agents"""
-    # Phase-1: Image-aware extraction (primary for scanned images)
-    phase1_csv = extract_phase1_medical_image(text)
+    def process_image_file(self, image_path):
+        """
+        ENHANCED image file processing with multiple fallback strategies
+        """
+        try:
+            # Load image
+            image = Image.open(image_path)
+            
+            # Try to enhance image resolution if it's too small
+            width, height = image.size
+            if width < 800 or height < 600:
+                # Upscale small images
+                scale_factor = max(800/width, 600/height)
+                new_width = int(width * scale_factor)
+                new_height = int(height * scale_factor)
+                image = image.resize((new_width, new_height), Image.LANCZOS)
+            
+            # Perform OCR with multiple strategies
+            ocr_result = self.perform_ocr_with_validation(image)
+            
+            if not ocr_result:
+                return self.create_low_confidence_response("OCR failed to extract any text from image")
+            
+            # Enhanced validation with detailed feedback
+            is_valid, validation_msg = self.validate_ocr_output(ocr_result)
+            
+            if is_valid:
+                return self.create_success_response(
+                    ocr_result['text'],
+                    extraction_method=f"ocr_image_{ocr_result.get('strategy', 'unknown')}",
+                    confidence=ocr_result['confidence'],
+                    validation_message=validation_msg,
+                    debug_info={
+                        'preprocessing_strategy': ocr_result.get('strategy'),
+                        'ocr_config': ocr_result.get('ocr_config'),
+                        'total_attempts': ocr_result.get('total_attempts', 0),
+                        'original_image_size': f"{width}x{height}",
+                        'processed_image_size': f"{image.size[0]}x{image.size[1]}" if image.size != (width, height) else "unchanged"
+                    }
+                )
+            else:
+                # Try emergency fallback strategies
+                emergency_result = self.emergency_ocr_fallback(image)
+                if emergency_result:
+                    return self.create_success_response(
+                        emergency_result['text'],
+                        extraction_method="emergency_fallback",
+                        confidence=emergency_result['confidence'],
+                        validation_message="Emergency fallback extraction succeeded",
+                        debug_info={'fallback_method': emergency_result.get('method')}
+                    )
+                else:
+                    return self.create_low_confidence_response(
+                        f"{validation_msg}. Tried {ocr_result.get('total_attempts', 0)} different approaches."
+                    )
+                
+        except Exception as e:
+            return self.create_error_response(f"Image processing failed: {str(e)}")
     
-    # Medical Document Validation (with interpretation)
-    validated_json = process_medical_document(text)
-    
-    # Pure Table Extraction (no interpretation)
-    table_csv = extract_medical_table(text)
-    
-    try:
-        validated_data = json.loads(validated_json)
+    def emergency_ocr_fallback(self, image):
+        """
+        Emergency fallback OCR strategies for very challenging images
+        """
+        emergency_strategies = [
+            'extreme_contrast',
+            'edge_enhancement',
+            'dilation_erosion',
+            'gaussian_blur_sharpen'
+        ]
         
-        # Convert validated data to medical parameters
-        medical_parameters = []
-        for test_name, test_data in validated_data.items():
-            medical_parameters.append({
-                "name": test_name,
-                "value": test_data["value"],
-                "unit": test_data["unit"],
-                "reference_range": test_data["reference_range"],
-                "status": test_data["status"],
-                "confidence": "0.95"
-            })
+        for strategy in emergency_strategies:
+            try:
+                if strategy == 'extreme_contrast':
+                    processed = self._emergency_extreme_contrast(image)
+                elif strategy == 'edge_enhancement':
+                    processed = self._emergency_edge_enhancement(image)
+                elif strategy == 'dilation_erosion':
+                    processed = self._emergency_dilation_erosion(image)
+                elif strategy == 'gaussian_blur_sharpen':
+                    processed = self._emergency_gaussian_blur_sharpen(image)
+                else:
+                    continue
+                
+                # Try simple OCR on processed image
+                text = pytesseract.image_to_string(processed, config=r'--oem 3 --psm 6 -l eng')
+                
+                if len(text.strip()) > 10:
+                    # Check for any medical-like content
+                    if (re.search(r'\d', text) and 
+                        (re.search(r'(?i)(test|result|level|count|normal|high|low)', text) or
+                         len(re.findall(r'\d+\.?\d*', text)) >= 1)):
+                        
+                        return {
+                            'text': text.strip(),
+                            'confidence': 0.3,  # Low but acceptable for emergency
+                            'method': strategy
+                        }
+                        
+            except Exception:
+                continue
         
-        # Create comprehensive result with all extraction methods
-        structured_result = {
+        return None
+    
+    def _emergency_extreme_contrast(self, image):
+        """Extreme contrast enhancement"""
+        img_array = np.array(image.convert('L'))
+        
+        # Extreme histogram stretching
+        min_val, max_val = np.percentile(img_array, [1, 99])
+        stretched = np.clip((img_array - min_val) * 255 / (max_val - min_val), 0, 255).astype(np.uint8)
+        
+        # Binary threshold
+        _, binary = cv2.threshold(stretched, 127, 255, cv2.THRESH_BINARY)
+        
+        return Image.fromarray(binary)
+    
+    def _emergency_edge_enhancement(self, image):
+        """Edge enhancement for faded text"""
+        img_array = np.array(image.convert('L'))
+        
+        # Sobel edge detection
+        sobelx = cv2.Sobel(img_array, cv2.CV_64F, 1, 0, ksize=3)
+        sobely = cv2.Sobel(img_array, cv2.CV_64F, 0, 1, ksize=3)
+        edges = np.sqrt(sobelx**2 + sobely**2)
+        
+        # Normalize and threshold
+        edges_norm = ((edges / edges.max()) * 255).astype(np.uint8)
+        _, binary = cv2.threshold(edges_norm, 50, 255, cv2.THRESH_BINARY)
+        
+        return Image.fromarray(binary)
+    
+    def _emergency_dilation_erosion(self, image):
+        """Morphological operations for broken text"""
+        img_array = np.array(image.convert('L'))
+        
+        # Threshold
+        _, binary = cv2.threshold(img_array, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # Morphological operations
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 1))
+        dilated = cv2.dilate(binary, kernel, iterations=1)
+        eroded = cv2.erode(dilated, kernel, iterations=1)
+        
+        return Image.fromarray(eroded)
+    
+    def _emergency_gaussian_blur_sharpen(self, image):
+        """Gaussian blur followed by sharpening"""
+        img_array = np.array(image.convert('L'))
+        
+        # Gaussian blur
+        blurred = cv2.GaussianBlur(img_array, (3, 3), 0)
+        
+        # Unsharp mask
+        sharpened = cv2.addWeighted(img_array, 1.5, blurred, -0.5, 0)
+        
+        # Threshold
+        _, binary = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        return Image.fromarray(binary)
+    
+    def create_success_response(self, text, extraction_method, confidence, validation_message="", debug_info=None):
+        """
+        Create successful extraction response with enhanced debugging
+        """
+        # Process through Phase-1 extraction
+        phase1_csv = extract_phase1_medical_image(text)
+        
+        # Additional processing through other agents
+        try:
+            validated_json = process_medical_document(text)
+            table_csv = extract_medical_table(text)
+        except:
+            validated_json = "{}"
+            table_csv = ""
+        
+        response_data = {
+            "status": "success",
+            "extraction_method": extraction_method,
+            "confidence": round(confidence, 3),
+            "validation_message": validation_message,
             "patient_info": {"name": "", "place": "", "age": "", "sex": ""},
-            "medical_parameters": medical_parameters,
+            "medical_parameters": [],
             "phase1_extraction_csv": phase1_csv,
             "table_extraction_csv": table_csv,
-            "ignored_fields": [],
+            "validated_json": validated_json,
+            "raw_text": text,
             "processing_agents": {
+                "orchestrator": "Enhanced Medical OCR Orchestration Agent",
                 "phase1_extractor": "Phase-1 Medical Image Extraction Agent",
                 "validation_agent": "Medical Document Validation Agent",
                 "table_extractor": "Medical Table Extraction Agent"
-            },
-            "raw_text": text
+            }
         }
         
-        return json.dumps(structured_result, indent=2)
+        # Add debug info if provided
+        if debug_info:
+            response_data["debug_info"] = debug_info
         
-    except json.JSONDecodeError:
-        # Fallback: return Phase-1 extraction only
+        return json.dumps(response_data, indent=2)
+    
+    def create_low_confidence_response(self, reason):
+        """
+        Create enhanced low confidence response with debugging info
+        """
         return json.dumps({
-            "patient_info": {"name": "", "place": "", "age": "", "sex": ""},
-            "medical_parameters": [],
-            "phase1_extraction_csv": phase1_csv,
-            "table_extraction_csv": table_csv,
-            "ignored_fields": [],
-            "processing_agents": {
-                "phase1_extractor": "Phase-1 Medical Image Extraction Agent",
-                "table_extractor": "Medical Table Extraction Agent"
-            },
-            "error": "Medical validation failed, using Phase-1 and table extraction",
-            "raw_text": text
-        })
+            "status": "low_confidence",
+            "error": "OCR_EXTRACTION_FAILED",
+            "message": "Unable to extract medical data from the uploaded image. The image may need better quality or different format.",
+            "technical_reason": reason,
+            "recommendations": [
+                "📱 Try taking a new photo with better lighting",
+                "🔍 Ensure the text is clearly visible and in focus",
+                "📐 Take the photo straight-on (avoid angles)",
+                "💡 Use good lighting - avoid shadows and glare",
+                "📄 If possible, upload the original PDF instead of a photo",
+                "🖼️ Try cropping to show only the test results table",
+                "📏 Ensure the image resolution is high enough to read text clearly"
+            ],
+            "debug_info": {
+                "min_confidence_threshold": self.min_confidence_threshold,
+                "min_text_length": self.min_text_length,
+                "preprocessing_strategies_available": self.preprocessing_strategies,
+                "medical_patterns_checked": len(self.medical_parameter_patterns)
+            }
+        }, indent=2)
+    
+    def create_error_response(self, error_message):
+        """
+        Create error response
+        """
+        return json.dumps({
+            "status": "error",
+            "error": "PROCESSING_FAILED",
+            "message": error_message,
+            "recommendations": [
+                "Check file format (PDF, PNG, JPG, JPEG supported)",
+                "Ensure file is not corrupted",
+                "Try uploading a different version of the document"
+            ]
+        }, indent=2)
 
 
-def extract_text_from_pdf(uploaded_pdf):
-    text = ""
-
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
-            temp_pdf.write(uploaded_pdf.read())
-            temp_pdf_path = temp_pdf.name
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-    try:
-        with pdfplumber.open(temp_pdf_path) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-    except:
-        pass
-
-    if len(text.strip()) < 10:
-        try:
-            pages = convert_from_path(temp_pdf_path)
-            text = ""
-            for img in pages:
-                processed_img = preprocess_image(img)
-                custom_config = r'--oem 3 --psm 6'
-                text += pytesseract.image_to_string(processed_img, config=custom_config) + "\n"
-        except Exception as e:
-            return f"Error: {str(e)}"
-
-    # Convert to JSON format with extracted parameters
-    return convert_to_json_format(text)
-
-
-def extract_text_from_image(uploaded_image):
-    try:
-        image = Image.open(uploaded_image)
-        
-        # Preprocess image for better OCR
-        processed_image = preprocess_image(image)
-        
-        # Extract text with custom config
-        custom_config = r'--oem 3 --psm 6'
-        text = pytesseract.image_to_string(processed_image, config=custom_config)
-        
-        # Convert to JSON format with extracted parameters
-        return convert_to_json_format(text)
-        
-    except Exception as e:
-        return f"Error: {str(e)}"
+# Global orchestrator instance
+_ocr_orchestrator = MedicalOCROrchestrator()
 
 
 def extract_text_from_file(uploaded_file):
-    """OCR and Data Ingestion Agent - Format-specific execution"""
-    file_type = uploaded_file.type
-    file_name = uploaded_file.name.lower()
-    
-    # Auto-detect file type and execute appropriate pipeline
-    if file_type == "application/pdf":
-        return handle_pdf_file(uploaded_file)
-    elif file_type in ["image/png", "image/jpeg", "image/jpg"]:
-        return handle_image_file(uploaded_file)
-    elif file_type == "text/csv" or file_name.endswith('.csv'):
-        return handle_csv_file(uploaded_file)
-    elif file_type == "application/json" or file_name.endswith('.json'):
-        return handle_json_file(uploaded_file)
-    else:
-        return json.dumps({
-            "error": f"Unsupported file type: {file_type}",
-            "supported_formats": ["PNG", "JPG", "PDF", "CSV", "JSON"]
-        })
+    """
+    Main entry point - OCR and Data Ingestion Agent with reliability control
+    """
+    return _ocr_orchestrator.process_file(uploaded_file)
 
 
-def handle_pdf_file(uploaded_file):
-    """Handle PDF files - digital text first, OCR fallback"""
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
-            temp_pdf.write(uploaded_file.read())
-            temp_pdf_path = temp_pdf.name
-    except Exception as e:
-        return json.dumps({"error": f"PDF processing error: {str(e)}"})
-
-    # Step 1: Extract digital text
-    digital_text = ""
-    try:
-        with pdfplumber.open(temp_pdf_path) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    digital_text += page_text + "\n"
-    except:
-        pass
-
-    # Step 2: OCR fallback if insufficient digital text
-    ocr_text = ""
-    if len(digital_text.strip()) < 20:  # Insufficient digital text
-        try:
-            pages = convert_from_path(temp_pdf_path)
-            for img in pages:
-                processed_img = preprocess_image(img)
-                custom_config = r'--oem 3 --psm 6'
-                ocr_text += pytesseract.image_to_string(processed_img, config=custom_config) + "\n"
-        except Exception as e:
-            return json.dumps({"error": f"OCR processing error: {str(e)}"})
-
-    # Step 3: Merge results without duplication
-    combined_text = digital_text if digital_text.strip() else ocr_text
-    
-    # Step 4: Extract parameters
-    return convert_to_json_format(combined_text)
+# Legacy functions maintained for backward compatibility
+def preprocess_image(image):
+    """Legacy function - maintained for backward compatibility"""
+    return _ocr_orchestrator.preprocess_image_advanced(image)
 
 
-def handle_image_file(uploaded_file):
-    """Handle image files - high-accuracy OCR with layout detection"""
-    try:
-        image = Image.open(uploaded_file)
-        
-        # Enhanced preprocessing for layout detection
-        processed_image = preprocess_image(image)
-        
-        # Multi-pass OCR for maximum accuracy
-        configs = [
-            r'--oem 3 --psm 6',   # Uniform text block
-            r'--oem 3 --psm 4',   # Single column
-            r'--oem 3 --psm 3',   # Fully automatic
-        ]
-        
-        best_text = ""
-        best_confidence = 0
-        
-        for config in configs:
-            try:
-                # Get text with confidence data
-                data = pytesseract.image_to_data(processed_image, config=config, output_type=pytesseract.Output.DICT)
-                text = pytesseract.image_to_string(processed_image, config=config)
-                
-                # Calculate confidence
-                confidences = [int(conf) for conf in data['conf'] if int(conf) > 0]
-                avg_conf = sum(confidences) / len(confidences) if confidences else 0
-                
-                if avg_conf > best_confidence:
-                    best_confidence = avg_conf
-                    best_text = text
-            except:
-                continue
-        
-        # Extract parameters from best OCR result
-        return convert_to_json_format(best_text)
-        
-    except Exception as e:
-        return json.dumps({"error": f"Image processing error: {str(e)}"})
+def extract_text_from_pdf(uploaded_pdf):
+    """Legacy function - redirects to orchestrator"""
+    return _ocr_orchestrator.process_file(uploaded_pdf)
 
 
-def handle_csv_file(uploaded_file):
-    """Handle CSV files - return as-is without OCR or extraction"""
-    try:
-        # Read CSV content exactly as uploaded
-        csv_content = uploaded_file.read().decode('utf-8')
-        
-        # Return CSV metadata in JSON format for consistency
-        return json.dumps({
-            "file_type": "CSV",
-            "action": "passthrough",
-            "csv_content": csv_content,
-            "message": "CSV file returned as-is without OCR or extraction"
-        })
-        
-    except Exception as e:
-        return json.dumps({"error": f"CSV processing error: {str(e)}"})
-
-
-def handle_json_file(uploaded_file):
-    """Handle JSON files - parse directly without OCR"""
-    try:
-        json_content = uploaded_file.read().decode('utf-8')
-        
-        # Validate JSON format
-        parsed_json = json.loads(json_content)
-        
-        # Return parsed JSON
-        return json.dumps({
-            "file_type": "JSON",
-            "action": "parsed",
-            "data": parsed_json,
-            "message": "JSON file parsed directly without OCR"
-        })
-        
-    except json.JSONDecodeError as e:
-        return json.dumps({"error": f"Invalid JSON format: {str(e)}"})
-    except Exception as e:
-        return json.dumps({"error": f"JSON processing error: {str(e)}"})
-
-
-def extract_patient_info(text):
-    """Extract patient information from OCR text"""
-    patient_info = {
-        "name": "",
-        "place": "",
-        "age": "",
-        "sex": ""
-    }
-    
-    lines = text.split('\n')
-    
-    for line in lines:
-        line = line.strip()
-        if len(line) < 3:
-            continue
-            
-        # Extract patient name
-        name_patterns = [
-            r'(?i)(?:patient\s*name|name)\s*[:\-]?\s*([A-Za-z\s]+)',
-            r'(?i)(?:mr\.|mrs\.|ms\.|dr\.)\s*([A-Za-z\s]+)',
-            r'^([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s|$)',  # Title case names
-        ]
-        
-        for pattern in name_patterns:
-            match = re.search(pattern, line)
-            if match and not patient_info["name"]:
-                name = match.group(1).strip()
-                if len(name) > 2 and not re.search(r'\d', name):
-                    patient_info["name"] = name
-                    break
-        
-        # Extract location/place
-        place_patterns = [
-            r'(?i)(?:address|location|place|city)\s*[:\-]?\s*([A-Za-z\s,]+)',
-            r'(?i)([A-Za-z\s]+(?:hospital|clinic|center|medical))',
-        ]
-        
-        for pattern in place_patterns:
-            match = re.search(pattern, line)
-            if match and not patient_info["place"]:
-                place = match.group(1).strip()
-                if len(place) > 2:
-                    patient_info["place"] = place
-                    break
-        
-        # Extract age
-        age_patterns = [
-            r'(?i)age\s*[:\-]?\s*(\d+)',
-            r'(?i)(\d+)\s*(?:years?|yrs?|y\.o\.)',
-            r'(?i)(?:age|aged)\s*(\d+)',
-        ]
-        
-        for pattern in age_patterns:
-            match = re.search(pattern, line)
-            if match and not patient_info["age"]:
-                age = match.group(1)
-                if 0 <= int(age) <= 150:
-                    patient_info["age"] = age
-                    break
-        
-        # Extract sex/gender
-        sex_patterns = [
-            r'(?i)(?:sex|gender)\s*[:\-]?\s*(male|female|m|f)',
-            r'(?i)\b(male|female)\b',
-            r'(?i)\b(m|f)\b(?:\s|$)',
-        ]
-        
-        for pattern in sex_patterns:
-            match = re.search(pattern, line)
-            if match and not patient_info["sex"]:
-                sex = match.group(1).upper()
-                if sex in ['M', 'MALE']:
-                    patient_info["sex"] = "Male"
-                elif sex in ['F', 'FEMALE']:
-                    patient_info["sex"] = "Female"
-                break
-    
-    return patient_info
-
-
-def identify_ignored_fields(text, patient_info, medical_params):
-    """Identify fields that should be ignored"""
-    ignored_fields = []
-    lines = text.split('\n')
-    
-    # Get already extracted content
-    extracted_content = set()
-    
-    # Add patient info content
-    for key, value in patient_info.items():
-        if value:
-            extracted_content.add(value.lower())
-    
-    # Add medical parameter content
-    for param in medical_params:
-        extracted_content.add(param["name"].lower())
-        if param["value"]:
-            extracted_content.add(str(param["value"]).lower())
-    
-    # Patterns for content to ignore
-    ignore_patterns = [
-        r'(?i)(?:date|time|report|page|lab|laboratory)',
-        r'(?i)(?:collected|received|printed|generated)',
-        r'(?i)(?:instrument|analyzer|method|technique)',
-        r'(?i)(?:doctor|physician|pathologist|technician)',
-        r'(?i)(?:sample|specimen|blood|serum|plasma)',
-        r'(?i)(?:reference|normal|range|values)',
-        r'(?i)(?:department|section|unit)',
-        r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}',  # Dates
-        r'\d{1,2}:\d{2}(?::\d{2})?',  # Times
-        r'(?:page|pg)\s*\d+',  # Page numbers
-        r'^[A-Z\s]+$',  # All caps headings
-    ]
-    
-    for line in lines:
-        line = line.strip()
-        if len(line) < 3:
-            continue
-            
-        # Check if line contains already extracted content
-        line_lower = line.lower()
-        is_extracted = any(content in line_lower for content in extracted_content)
-        
-        if not is_extracted:
-            # Check if matches ignore patterns
-            for pattern in ignore_patterns:
-                if re.search(pattern, line):
-                    ignored_fields.append(line)
-                    break
-            else:
-                # Check if it's a heading or noise
-                if (len(line) < 50 and 
-                    (line.isupper() or 
-                     not re.search(r'\d', line) or
-                     len(line.split()) < 3)):
-                    ignored_fields.append(line)
-    
-    return ignored_fields
-
-
-def normalize_medical_parameter_name(name):
-    """Normalize medical parameter names"""
-    name_map = {
-        'eosi': 'Eosinophils',
-        'eosinophil': 'Eosinophils',
-        'neutro': 'Neutrophils',
-        'neutrophil': 'Neutrophils',
-        'lympho': 'Lymphocytes',
-        'lymphocyte': 'Lymphocytes',
-        'mono': 'Monocytes',
-        'monocyte': 'Monocytes',
-        'baso': 'Basophils',
-        'basophil': 'Basophils',
-        'hb': 'Hemoglobin',
-        'hgb': 'Hemoglobin',
-        'hemoglobin': 'Hemoglobin',
-        'rbc': 'RBC Count',
-        'red blood cell': 'RBC Count',
-        'wbc': 'WBC Count',
-        'white blood cell': 'WBC Count',
-        'plt': 'Platelet Count',
-        'platelets': 'Platelet Count',
-        'glucose': 'Glucose',
-        'blood sugar': 'Glucose',
-        'cholesterol': 'Total Cholesterol',
-        'chol': 'Total Cholesterol',
-        'creatinine': 'Creatinine',
-        'creat': 'Creatinine',
-        'bun': 'BUN',
-        'urea': 'BUN',
-        'sgpt': 'ALT (SGPT)',
-        'alt': 'ALT (SGPT)',
-        'sgot': 'AST (SGOT)',
-        'ast': 'AST (SGOT)',
-    }
-    
-    normalized = name.lower().strip()
-    return name_map.get(normalized, name.strip())
-
-
-def structure_medical_document(ocr_json):
-    """Medical document structuring agent - separate into 3 sections"""
-    try:
-        # Parse OCR JSON
-        ocr_data = json.loads(ocr_json)
-        
-        # Get raw text and parameters
-        raw_text = ocr_data.get("raw_text", "")
-        if not raw_text and "parameters" in ocr_data:
-            # Reconstruct text from parameters if needed
-            raw_text = "\n".join([param.get("raw_text", "") for param in ocr_data["parameters"]])
-        
-        # Extract patient information
-        patient_info = extract_patient_info(raw_text)
-        
-        # Process medical parameters
-        medical_parameters = []
-        if "parameters" in ocr_data:
-            for param in ocr_data["parameters"]:
-                param_name = param.get("name", "")
-                param_value = param.get("value", "")
-                
-                # Skip if this looks like patient info
-                if any(keyword in param_name.lower() for keyword in ['name', 'age', 'sex', 'patient', 'address']):
-                    continue
-                
-                # Only include if it's a medical parameter
-                if (param_value and 
-                    (re.search(r'\d', str(param_value)) or 
-                     str(param_value).lower() in ['present', 'absent', 'positive', 'negative'])):
-                    
-                    medical_parameters.append({
-                        "name": normalize_medical_parameter_name(param_name),
-                        "value": param.get("value", ""),
-                        "unit": param.get("unit", ""),
-                        "reference_range": param.get("reference_range", ""),
-                        "confidence": param.get("confidence", "")
-                    })
-        
-        # Identify ignored fields
-        ignored_fields = identify_ignored_fields(raw_text, patient_info, medical_parameters)
-        
-        # Structure the output
-        structured_output = {
-            "patient_info": patient_info,
-            "medical_parameters": medical_parameters,
-            "ignored_fields": ignored_fields
-        }
-        
-        return json.dumps(structured_output, indent=2)
-        
-    except Exception as e:
-        return json.dumps({
-            "error": f"Document structuring error: {str(e)}",
-            "patient_info": {"name": "", "place": "", "age": "", "sex": ""},
-            "medical_parameters": [],
-            "ignored_fields": []
-        })
+def extract_text_from_image(uploaded_image):
+    """Legacy function - redirects to orchestrator"""
+    return _ocr_orchestrator.process_file(uploaded_image)

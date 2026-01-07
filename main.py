@@ -31,10 +31,11 @@ def main():
         print("\n⚠️  AI analysis limited - Phase-1 analysis available")
     
     print("\nAvailable commands:")
-    print("1. streamlit run src/ui/UI.py  - Start web interface")
-    print("2. python setup_phase2.py     - Setup Phase-2 AI")
-    print("3. python tests/test_phase2.py - Run tests")
-    print("4. python start_project.py    - Auto-start with Ollama")
+    print("1. streamlit run src/ui/UI.py       - Start web interface")
+    print("2. python scripts/setup_phase2.py   - Setup Phase-2 AI")
+    print("3. python tests/test_phase2.py      - Run tests")
+    print("4. python start_project.py         - Auto-start with Ollama (recommended)")
+    print("5. python run_app.py               - Quick UI launch (no AI setup)")
     print()
     print("Recommended: python start_project.py")
 

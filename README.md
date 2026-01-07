@@ -37,10 +37,13 @@ python setup_phase2.py
 
 ### 3. **Run Application**
 ```bash
-# Option 1: Using the runner script (recommended)
+# Option 1: Full AI experience (recommended)
+python start_project.py
+
+# Option 2: Quick UI launch (no AI setup)
 python run_app.py
 
-# Option 2: Direct Streamlit command
+# Option 3: Direct Streamlit command
 streamlit run src/ui/UI.py
 ```
 
@@ -52,8 +55,11 @@ Open your browser to: **http://localhost:8501**
 ```
 📦 Blood-Report-Analysis-System/
 ├── 🚀 main.py                    # Main entry point
-├── 🚀 run_app.py                 # Application runner
-├── ⚙️ setup_phase2.py           # Phase-2 setup script
+├── 🚀 start_project.py           # Full launcher with AI setup (recommended)
+├── 🚀 run_app.py                 # Quick UI launcher (no AI setup)
+├── ⚙️ scripts/                   # Utility scripts
+│   ├── setup_phase2.py          # Phase-2 AI setup
+│   └── start_project.bat        # Windows launcher
 ├── 📋 requirements.txt          # Dependencies
 ├── 📖 README.md                 # This file
 ├── 📖 PROJECT_STRUCTURE.md      # Detailed structure docs
@@ -196,7 +202,10 @@ AI Recommendations:
 
 3. **"Import errors"**
    ```bash
-   # Use the runner script
+   # Full AI experience (recommended)
+   python start_project.py
+   
+   # Quick UI launch
    python run_app.py
    
    # Or set PYTHONPATH
