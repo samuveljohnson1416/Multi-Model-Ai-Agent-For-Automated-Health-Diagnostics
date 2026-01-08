@@ -274,26 +274,25 @@ class MultiReportDetector:
         for report in reports:
             content = report['content']
             
-            # Check minimum content length
-            if len(content.strip()) < 100:
+            # Very lenient validation - accept almost any content
+            content_stripped = content.strip()
+            
+            # Check minimum content length (very lenient)
+            if len(content_stripped) < 20:  # Reduced from 50 to 20
                 continue
             
-            # Check for medical content
-            medical_keywords = ['hemoglobin', 'glucose', 'cholesterol', 'rbc', 'wbc', 'platelet', 
-                              'blood', 'test', 'result', 'normal', 'high', 'low']
+            # Accept if content has any text and numbers
+            has_text = bool(re.search(r'[a-zA-Z]{2,}', content))
+            has_numbers = bool(re.search(r'\d', content))
             
-            content_lower = content.lower()
-            medical_matches = sum(1 for keyword in medical_keywords if keyword in content_lower)
-            
-            if medical_matches < 2:  # Minimum medical content threshold
+            # Very lenient - accept if we have either text OR numbers
+            if has_text or has_numbers:
+                valid_reports.append(report)
                 continue
             
-            # Check for numeric values (medical reports should have measurements)
-            numeric_values = re.findall(r'\d+\.?\d*', content)
-            if len(numeric_values) < 3:
-                continue
-            
-            valid_reports.append(report)
+            # Last resort - if content is reasonably long, accept it anyway
+            if len(content_stripped) >= 100:
+                valid_reports.append(report)
         
         return valid_reports
 

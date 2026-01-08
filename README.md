@@ -1,136 +1,140 @@
-# Multi-Model AI Agent for Automated Health Diagnostics
+# Blood Report Analysis System
 
-A comprehensive AI-powered system for analyzing blood reports with advanced OCR capabilities, multi-report processing, and intelligent Q&A assistance.
+An AI-powered medical report analysis system that provides comprehensive blood work interpretation with intelligent insights and multi-report comparison capabilities.
 
-## 🚀 Features
+## Features
 
-- **🔍 Advanced OCR**: Extract text from PDFs, images, and scanned documents with 85-90% success rate
-- **📊 Multi-Report Processing**: Automatic detection and analysis of multiple reports in single documents
-- **🤖 AI Analysis**: Mistral LLM integration with medical safety compliance
-- **💬 Intelligent Q&A**: GPT-like chat interface for medical report questions
-- **👤 Auto-Demographics**: Automatic age/gender extraction from reports
-- **📈 Comparative Analysis**: Trend detection and parameter comparison across reports
-- **⚡ Performance Optimized**: Sub-10-second AI responses with caching
+- **Advanced OCR Processing** - Extract text from PDF and image files with multiple preprocessing strategies
+- **Comprehensive Blood Analysis** - Parse 20+ blood parameters including CBC, differential counts, and chemistry panels
+- **Intelligent AI Assistant** - Goal-oriented AI that provides personalized health recommendations
+- **Multi-Report Comparison** - Track health trends across multiple reports over time
+- **Real-time Chat Interface** - Interactive Q&A about your blood work results
 
-## 🎯 Quick Start
+## Installation
 
-1. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd blood-report-analysis
+```
 
-2. **Start the Application**:
-   ```bash
-   python start_project.py
-   ```
-   Or use the Windows batch file:
-   ```bash
-   scripts/start_project.bat
-   ```
+2. Create a virtual environment:
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
 
-3. **Access the Interface**:
-   - Open your browser to `http://localhost:8501`
-   - Upload blood reports (PDF, image, JSON, or CSV)
-   - Get AI-powered analysis and interactive chat
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-## 📁 Project Structure
+4. Install Tesseract OCR:
+   - **Windows**: Download from [GitHub releases](https://github.com/UB-Mannheim/tesseract/wiki)
+   - **macOS**: `brew install tesseract`
+   - **Linux**: `sudo apt-get install tesseract-ocr`
+
+5. Install Ollama (for AI features):
+   - Download from [ollama.ai](https://ollama.ai)
+   - Install Mistral model: `ollama pull mistral:instruct`
+
+## Usage
+
+1. Start the application:
+```bash
+python start_project.py
+```
+Or run directly:
+```bash
+streamlit run src/ui/UI.py
+```
+
+2. Open your browser and navigate to `http://localhost:8501`
+
+3. Upload your blood report (PDF, PNG, JPG, or JSON format)
+
+4. View comprehensive analysis and chat with the AI assistant
+
+## Supported File Formats
+
+- **PDF files** - Scanned or digital blood reports
+- **Image files** - PNG, JPG, JPEG format medical reports  
+- **JSON files** - Structured medical data
+- **CSV files** - Tabular blood work data
+
+## Project Structure
 
 ```
 ├── src/
-│   ├── core/           # Core processing modules (OCR, parsing, validation)
-│   │   ├── multi_report_detector.py    # Multi-report boundary detection
-│   │   ├── multi_report_manager.py     # Multi-report processing pipeline
-│   │   ├── multi_report_qa_assistant.py # Enhanced Q&A for multiple reports
-│   │   ├── ocr_engine.py              # Robust OCR with 36 processing combinations
-│   │   ├── parser.py                  # Medical parameter extraction
-│   │   ├── validator.py               # Data validation and confidence scoring
-│   │   ├── interpreter.py             # Results interpretation
-│   │   └── qa_assistant.py            # LLM-based Q&A system
-│   ├── phase1/         # Basic parameter extraction and demographics
-│   ├── phase2/         # Advanced AI analysis with pattern recognition
-│   ├── ui/             # Modern Streamlit interface with chat
-│   └── utils/          # Utility functions and Ollama management
-├── config/             # Reference ranges and configuration
-├── data/               # Sample data and file storage
-├── docs/               # Comprehensive documentation
-├── scripts/            # Utility and startup scripts
-└── tests/              # Comprehensive test suite
+│   ├── core/           # Core analysis modules
+│   ├── ui/             # User interface components
+│   ├── utils/          # Utility functions
+│   ├── phase1/         # Basic extraction modules
+│   └── phase2/         # Advanced AI analysis
+├── config/             # Configuration files
+├── data/               # Sample data and test files
+├── docs/               # Documentation
+├── scripts/            # Setup and utility scripts
+└── tests/              # Test files
 ```
 
-## 🔧 System Requirements
+## Key Components
 
-- **Python**: 3.8+
-- **Ollama**: For AI analysis (auto-installed)
-- **Tesseract OCR**: For image processing
-- **Dependencies**: See requirements.txt
+### Core Modules
+- **OCR Engine** - Multi-strategy text extraction from medical documents
+- **Blood Parser** - Comprehensive parameter extraction (20+ parameters)
+- **AI Agent** - Enhanced intelligence with goal-oriented workflows
+- **Multi-Report Manager** - Handle multiple reports with comparison analysis
 
-## 📚 Documentation
+### Analysis Pipeline
+1. **Document Ingestion** - OCR processing with validation
+2. **Parameter Extraction** - Parse medical values, units, and reference ranges
+3. **Data Validation** - Ensure accuracy and completeness
+4. **Medical Interpretation** - Determine normal/abnormal status
+5. **AI Analysis** - Personalized insights and recommendations
 
-Comprehensive documentation available in `docs/`:
+## Blood Parameters Supported
 
-### Core Documentation
-- **`PROJECT_DEVELOPMENT_SUMMARY.md`** - Complete development history and problem solutions
-- **`PROJECT_STRUCTURE.md`** - Detailed system architecture
-- **`OLLAMA_AUTOSTART_README.md`** - AI service setup and management
+### Complete Blood Count (CBC)
+- White Blood Cell (WBC), Red Blood Cell (RBC), Hemoglobin, Hematocrit
+- Mean Cell Volume (MCV), Mean Cell Hemoglobin (MCH), MCHC, RDW
+- Platelet Count, Mean Platelet Volume
 
-### Technical Documentation
-- **`ROBUST_OCR_ENHANCEMENTS.md`** - OCR capabilities and improvements
-- **`SPEED_OPTIMIZATION_SUMMARY.md`** - Performance optimizations
-- **`JSON_PROCESSING_FIX.md`** - JSON file processing capabilities
-- **`MULTI_REPORT_IMPLEMENTATION_SUMMARY.md`** - Multi-report system details
+### Differential Count
+- Neutrophils, Lymphocytes, Monocytes, Eosinophils, Basophils
+- Both percentage and absolute counts
 
-## 🎯 Key Capabilities
+### Chemistry Panel
+- Glucose, Cholesterol, Creatinine, BUN, Liver enzymes
 
-### Multi-Report Processing
-- **Automatic Detection**: Identifies multiple reports in single PDFs
-- **Data Isolation**: Complete separation between reports to prevent contamination
-- **Comparative Analysis**: Trend detection and parameter comparison
-- **Session Memory**: Context-aware conversations across multiple reports
+## AI Features
 
-### Advanced OCR
-- **36 Processing Combinations**: 6 preprocessing × 6 OCR configurations
-- **Real-World Image Support**: Handles low-quality scanned documents
-- **Medical Content Detection**: Specialized for blood report formats
-- **Fallback Mechanisms**: Emergency processing for difficult images
+- **Intent Recognition** - Understands user goals beyond literal questions
+- **Clarifying Questions** - Asks intelligent follow-ups for better assistance
+- **Context Memory** - Remembers conversation history and preferences
+- **Trend Analysis** - Identifies patterns across multiple reports
+- **Personalized Recommendations** - Tailored health advice based on results
 
-### AI-Powered Analysis
-- **Mistral LLM Integration**: Fast, accurate medical reasoning
-- **Medical Safety**: Strict compliance with healthcare guidelines
-- **Performance Optimized**: 3-8 second response times
-- **Contextual Understanding**: Age/gender demographic integration
+## Contributing
 
-## 🚀 Getting Started
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/new-feature`)
+3. Commit your changes (`git commit -am 'Add new feature'`)
+4. Push to the branch (`git push origin feature/new-feature`)
+5. Create a Pull Request
 
-1. **Clone and Setup**:
-   ```bash
-   git clone <repository>
-   cd Multi-Model-Ai-Agent-For-Automated-Health-Diagnostics
-   pip install -r requirements.txt
-   ```
+## License
 
-2. **Run Application**:
-   ```bash
-   python start_project.py
-   ```
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-3. **Upload Reports**: Support for PDF, images, JSON, and CSV files
+## Disclaimer
 
-4. **Interactive Analysis**: Chat with AI about your blood reports
+This tool is for informational purposes only and should not replace professional medical advice. Always consult with healthcare professionals for medical decisions and interpretations.
 
-## 📈 Performance Metrics
+## Technical Requirements
 
-- **OCR Success Rate**: 85-90% (improved from 60%)
-- **AI Response Time**: 3-8 seconds (24% improvement)
-- **Multi-Report Support**: Unlimited reports per document
-- **System Reliability**: Production-ready with comprehensive error handling
-
-## 🔒 Medical Compliance
-
-- Strict medical disclaimers and safety rules
-- No diagnosis or medication recommendations
-- Data accuracy with confidence scoring
-- HIPAA-conscious design principles
-
-## 📄 License
-
-This project is for educational and research purposes. Please ensure compliance with medical data regulations in your jurisdiction.
+- Python 3.8+
+- Tesseract OCR
+- Ollama (optional, for AI features)
+- 4GB+ RAM recommended
+- Windows/macOS/Linux support

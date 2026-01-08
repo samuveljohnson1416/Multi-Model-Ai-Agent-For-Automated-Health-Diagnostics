@@ -25,8 +25,8 @@ class MedicalOCROrchestrator:
     """
     
     def __init__(self):
-        self.min_text_length = 10  # Further reduced for very short medical texts
-        self.min_confidence_threshold = 0.4  # More lenient for real-world images
+        self.min_text_length = 5  # Further reduced for very short medical texts
+        self.min_confidence_threshold = 0.2  # Much more lenient for real-world images
         self.medical_parameter_patterns = [
             r'(?i)hemoglobin|hb|hgb',
             r'(?i)rbc|red blood cell',
@@ -45,17 +45,17 @@ class MedicalOCROrchestrator:
             r'(?i)level|levels',
             r'(?i)mg/dl|g/dl|/ul|/cumm',
             r'(?i)normal|high|low',
-            r'(?i)test|result|value'
+            r'(?i)test|result|value',
+            # More flexible patterns
+            r'\d+\.?\d*',  # Any number
+            r'(?i)report|analysis|lab',
+            r'(?i)blood|serum|plasma'
         ]
         
-        # Enhanced preprocessing strategies
+        # Enhanced preprocessing strategies - optimized for speed
         self.preprocessing_strategies = [
             'standard',
-            'high_contrast',
-            'denoised',
-            'sharpened',
-            'morphological',
-            'adaptive_bilateral'
+            'high_contrast'  # Reduced from 6 to 2 most effective strategies
         ]
     
     def determine_file_type(self, uploaded_file):
@@ -65,23 +65,29 @@ class MedicalOCROrchestrator:
         file_type = uploaded_file.type
         file_name = uploaded_file.name.lower()
         
-        if file_type == "application/pdf":
+        if file_type == "application/pdf" or file_name.endswith('.pdf'):
             return "pdf"
-        elif file_type in ["image/png", "image/jpeg", "image/jpg"]:
+        elif file_type in ["image/png", "image/jpeg", "image/jpg"] or file_name.endswith(('.png', '.jpg', '.jpeg')):
             return "image"
         elif file_type == "application/json" or file_name.endswith('.json'):
             return "json"
         elif file_type == "text/csv" or file_name.endswith('.csv'):
             return "csv"
-        elif file_name.endswith('.pdf'):
-            return "pdf"
-        elif file_name.endswith(('.png', '.jpg', '.jpeg')):
-            return "image"
-        elif file_name.endswith('.json'):
-            return "json"
-        elif file_name.endswith('.csv'):
-            return "csv"
+        elif file_type in ["text/plain", "text/txt"] or file_name.endswith(('.txt', '.text')):
+            return "text"  # Add support for text files
         else:
+            # Be more lenient - try to process as image if it might be one
+            if any(ext in file_name for ext in ['.png', '.jpg', '.jpeg', '.pdf', '.json', '.csv', '.txt']):
+                if '.png' in file_name or '.jpg' in file_name or '.jpeg' in file_name:
+                    return "image"
+                elif '.pdf' in file_name:
+                    return "pdf"
+                elif '.json' in file_name:
+                    return "json"
+                elif '.csv' in file_name:
+                    return "csv"
+                elif '.txt' in file_name:
+                    return "text"
             return "unsupported"
     
     def extract_text_from_pdf_direct(self, pdf_path):
@@ -233,43 +239,28 @@ class MedicalOCROrchestrator:
     
     def perform_ocr_with_validation(self, image):
         """
-        ROBUST OCR execution with multiple strategies and preprocessing approaches
+        OPTIMIZED OCR execution with early stopping for better performance
         """
         best_result = None
         best_confidence = 0
         all_results = []
         
-        # OCR configurations optimized for different scenarios
+        # Reduced OCR configurations - only the most effective ones
         ocr_configs = [
-            # Medical table configurations
+            # Medical table configuration - most effective for medical reports
             {
-                'config': r'--oem 3 --psm 6 -l eng -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,-/():% ',
+                'config': r'--oem 3 --psm 6 -l eng',
                 'description': 'Medical table optimized'
             },
-            # Single column configuration
-            {
-                'config': r'--oem 3 --psm 4 -l eng',
-                'description': 'Single column'
-            },
-            # Sparse text configuration
-            {
-                'config': r'--oem 3 --psm 8 -l eng',
-                'description': 'Sparse text'
-            },
-            # Automatic page segmentation
+            # Automatic page segmentation - good fallback
             {
                 'config': r'--oem 3 --psm 3 -l eng',
                 'description': 'Automatic segmentation'
             },
-            # Single text line
+            # Single column - for simple layouts
             {
-                'config': r'--oem 3 --psm 7 -l eng',
-                'description': 'Single text line'
-            },
-            # Raw line without specific structure
-            {
-                'config': r'--oem 3 --psm 13 -l eng',
-                'description': 'Raw line'
+                'config': r'--oem 3 --psm 4 -l eng',
+                'description': 'Single column'
             }
         ]
         
@@ -310,6 +301,12 @@ class MedicalOCROrchestrator:
                         
                         all_results.append(result)
                         
+                        # Early stopping - if we get good results, don't try more combinations
+                        if (len(text.strip()) > 50 and avg_confidence > 70):
+                            best_result = result
+                            print(f"✅ Early success: {len(text.strip())} chars, {avg_confidence:.1f}% confidence")
+                            return best_result
+                        
                         # Check if this is the best result so far
                         if (len(text.strip()) > 10 and 
                             avg_confidence > best_confidence * 100):
@@ -337,7 +334,7 @@ class MedicalOCROrchestrator:
     
     def validate_ocr_output(self, ocr_result):
         """
-        ENHANCED validation for OCR output - more lenient for real-world images
+        ENHANCED validation for OCR output - much more lenient for real-world images
         """
         if not ocr_result:
             return False, "OCR failed to produce any result"
@@ -345,13 +342,13 @@ class MedicalOCROrchestrator:
         text = ocr_result.get('text', '')
         confidence = ocr_result.get('confidence', 0)
         
-        # More lenient validation for challenging images
+        # Very lenient validation for challenging images
         
-        # Check minimum text length (reduced threshold)
+        # Check minimum text length (very reduced threshold)
         if len(text.strip()) < self.min_text_length:
             return False, f"Text too short: {len(text.strip())} < {self.min_text_length} characters"
         
-        # Check for ANY medical-related content (more flexible)
+        # Check for ANY content that could be medical-related (very flexible)
         text_lower = text.lower()
         medical_indicators = []
         
@@ -363,36 +360,43 @@ class MedicalOCROrchestrator:
         
         # Check for numeric values (medical reports should have measurements)
         numeric_values = re.findall(r'\d+\.?\d*', text)
-        if len(numeric_values) >= 1:  # Reduced from 3 to 1
+        if len(numeric_values) >= 1:
             medical_indicators.append("numeric_values")
         
         # Check for medical units
-        medical_units = re.findall(r'(?i)(mg/dl|g/dl|/ul|/cumm|%|percent)', text)
+        medical_units = re.findall(r'(?i)(mg/dl|g/dl|/ul|/cumm|%|percent|ml|l|k/mcl|m/mcl|fl|pg)', text)
         if medical_units:
             medical_indicators.append("medical_units")
         
         # Check for medical keywords
-        medical_keywords = re.findall(r'(?i)(test|result|normal|high|low|range|level|count)', text)
+        medical_keywords = re.findall(r'(?i)(test|result|normal|high|low|range|level|count|blood|lab|report)', text)
         if medical_keywords:
             medical_indicators.append("medical_keywords")
         
         # Check for table-like structure
-        if re.search(r'\d+\.?\d*\s+\d+\.?\d*', text) or len(re.findall(r'\s{2,}', text)) > 2:
+        if re.search(r'\d+\.?\d*\s+\d+\.?\d*', text) or len(re.findall(r'\s{2,}', text)) > 1:
             medical_indicators.append("table_structure")
         
-        # More flexible validation - need at least 1 indicator
-        if not medical_indicators:
-            return False, f"No medical content detected. Text preview: '{text[:100]}...'"
+        # Check for any alphabetic content (not just numbers)
+        if re.search(r'[a-zA-Z]{2,}', text):
+            medical_indicators.append("text_content")
         
-        # Confidence check (more lenient)
+        # Very flexible validation - accept if we have ANY indicator OR just text with numbers
+        if not medical_indicators and len(numeric_values) == 0:
+            # Last chance - if we have any meaningful text at all, accept it
+            if len(text.strip()) >= 10 and re.search(r'[a-zA-Z]', text):
+                return True, f"Accepting text with basic content. Text preview: '{text[:100]}...'"
+            return False, f"No medical or meaningful content detected. Text preview: '{text[:100]}...'"
+        
+        # Confidence check (very lenient)
         if confidence < self.min_confidence_threshold:
-            # If we have strong medical indicators, be more lenient with confidence
-            if len(medical_indicators) >= 2:
-                return True, f"Low confidence ({confidence:.2f}) but strong medical indicators: {', '.join(medical_indicators)}"
+            # If we have any indicators or just some text, be very lenient with confidence
+            if len(medical_indicators) >= 1 or len(text.strip()) >= 15:
+                return True, f"Low confidence ({confidence:.2f}) but accepting due to content indicators: {', '.join(medical_indicators) if medical_indicators else 'text_length'}"
             else:
                 return False, f"OCR confidence too low: {confidence:.2f} < {self.min_confidence_threshold}"
         
-        return True, f"Validation passed: {len(medical_indicators)} medical indicators ({', '.join(medical_indicators)}), {len(numeric_values)} numeric values, confidence: {confidence:.2f}"
+        return True, f"Validation passed: {len(medical_indicators)} indicators ({', '.join(medical_indicators)}), {len(numeric_values)} numeric values, confidence: {confidence:.2f}"
     
     def process_file(self, uploaded_file):
         """
@@ -412,7 +416,7 @@ class MedicalOCROrchestrator:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
                     temp_file.write(uploaded_file.read())
                     temp_file_path = temp_file.name
-            elif file_type in ["json", "csv"]:
+            elif file_type in ["json", "csv", "text"]:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_type}") as temp_file:
                     temp_file.write(uploaded_file.read())
                     temp_file_path = temp_file.name
@@ -430,6 +434,8 @@ class MedicalOCROrchestrator:
                 return self.process_json_file(temp_file_path)
             elif file_type == "csv":
                 return self.process_csv_file(temp_file_path)
+            elif file_type == "text":
+                return self.process_text_file(temp_file_path)
             else:
                 return self.process_image_file(temp_file_path)
         finally:
@@ -673,16 +679,21 @@ class MedicalOCROrchestrator:
             # Check if JSON contains medical parameters
             json_str = str(json_data).lower()
             medical_keywords = ['hemoglobin', 'glucose', 'cholesterol', 'rbc', 'wbc', 'platelet', 
-                              'hb', 'hgb', 'blood', 'test', 'result', 'count', 'level']
+                              'hb', 'hgb', 'blood', 'test', 'result', 'count', 'level', 'mcv', 'mch', 'mchc']
             
             has_medical_content = any(keyword in json_str for keyword in medical_keywords)
+            
+            if not has_medical_content:
+                # Be more lenient - if it has any numeric data, try to process it
+                if re.search(r'\d+\.?\d*', json_str):
+                    has_medical_content = True
             
             if not has_medical_content:
                 return self.create_error_response(
                     "JSON file doesn't contain medical data. Please upload a blood report with medical parameters."
                 )
             
-            # Extract medical parameters from JSON
+            # Extract medical parameters from JSON - support multiple formats
             medical_text_lines = []
             
             def extract_medical_params(data, prefix=""):
@@ -691,8 +702,8 @@ class MedicalOCROrchestrator:
                     for key, value in data.items():
                         current_key = f"{prefix}_{key}" if prefix else key
                         
-                        # Skip patient info fields
-                        if current_key.lower() in ['name', 'age', 'gender', 'patient', 'id', 'patient_info']:
+                        # Skip patient info fields but don't exclude everything
+                        if current_key.lower() in ['name', 'id'] and prefix == "":
                             continue
                         
                         if isinstance(value, dict):
@@ -714,17 +725,45 @@ class MedicalOCROrchestrator:
                             else:
                                 # Recursively check nested objects
                                 extract_medical_params(value, current_key)
+                        elif isinstance(value, list):
+                            # Handle arrays of medical parameters
+                            for i, item in enumerate(value):
+                                if isinstance(item, dict):
+                                    extract_medical_params(item, f"{current_key}_{i}")
+                                else:
+                                    medical_text_lines.append(f"{current_key}_{i}: {item}")
                         elif isinstance(value, (int, float, str)) and str(value).strip():
                             # Simple key-value format
                             medical_text_lines.append(f"{current_key}: {value}")
+                elif isinstance(data, list):
+                    # Handle top-level arrays
+                    for i, item in enumerate(data):
+                        if isinstance(item, dict):
+                            extract_medical_params(item, f"item_{i}")
+                        else:
+                            medical_text_lines.append(f"value_{i}: {item}")
             
             # Extract parameters
             extract_medical_params(json_data)
             
             if not medical_text_lines:
-                return self.create_error_response(
-                    "No medical parameters found in JSON. Expected format: {'parameter_name': {'value': '12.5', 'unit': 'g/dL', ...}}"
-                )
+                # Last resort - convert entire JSON to text format
+                json_text = json.dumps(json_data, indent=2)
+                if len(json_text) > 20:
+                    return self.create_success_response(
+                        f"Medical Data (from JSON):\n\n{json_text}",
+                        extraction_method="json_fallback",
+                        confidence=0.6,
+                        validation_message="JSON processed as raw text - no structured medical parameters found",
+                        debug_info={
+                            'source_format': 'JSON',
+                            'extraction_method': 'raw_json_text_conversion'
+                        }
+                    )
+                else:
+                    return self.create_error_response(
+                        "No medical parameters found in JSON. Expected format: {'parameter_name': {'value': '12.5', 'unit': 'g/dL', ...}}"
+                    )
             
             # Convert to text format for processing
             medical_text = "\n".join(medical_text_lines)
@@ -740,7 +779,7 @@ class MedicalOCROrchestrator:
                 debug_info={
                     'source_format': 'JSON',
                     'parameters_found': len(medical_text_lines),
-                    'extraction_method': 'direct_json_parsing'
+                    'extraction_method': 'structured_json_parsing'
                 }
             )
             
@@ -749,6 +788,41 @@ class MedicalOCROrchestrator:
         except Exception as e:
             return self.create_error_response(f"JSON processing failed: {str(e)}")
     
+    def process_text_file(self, text_path):
+        """
+        Process plain text file - treat as direct medical report text
+        """
+        try:
+            # Read text file
+            with open(text_path, 'r', encoding='utf-8') as f:
+                text_content = f.read()
+            
+            if not text_content.strip():
+                return self.create_error_response("Text file is empty")
+            
+            # Check if it looks like medical content
+            if self.is_text_sufficient(text_content):
+                return self.create_success_response(
+                    text_content,
+                    extraction_method="direct_text_file",
+                    confidence=0.95,
+                    validation_message="Direct text file processing - medical content detected"
+                )
+            else:
+                # Be more lenient - if it has any content, try to process it
+                if len(text_content.strip()) >= 10:
+                    return self.create_success_response(
+                        text_content,
+                        extraction_method="direct_text_file_lenient",
+                        confidence=0.7,
+                        validation_message="Text file processed with lenient validation"
+                    )
+                else:
+                    return self.create_error_response("Text file content too short or no medical data detected")
+            
+        except Exception as e:
+            return self.create_error_response(f"Text file processing error: {str(e)}")
+
     def process_csv_file(self, csv_path):
         """
         Process CSV file - return as-is for now

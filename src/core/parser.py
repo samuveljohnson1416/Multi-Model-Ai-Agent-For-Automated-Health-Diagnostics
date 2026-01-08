@@ -1,5 +1,6 @@
 import re
 import json
+from .enhanced_blood_parser import parse_enhanced_blood_report
 
 
 def parse_json_report(json_text):
@@ -22,6 +23,20 @@ def parse_json_report(json_text):
 
 
 def parse_blood_report(ocr_text):
+    """
+    Enhanced blood report parser with comprehensive parameter extraction
+    """
+    # Try enhanced parsing first
+    enhanced_result = parse_enhanced_blood_report(ocr_text)
+    if enhanced_result:
+        return enhanced_result
+    
+    # Fallback to original parsing for compatibility
+    return _parse_blood_report_fallback(ocr_text)
+
+
+def _parse_blood_report_fallback(ocr_text):
+    """Original parsing logic as fallback"""
     # Try parsing structured OCR JSON first
     try:
         ocr_data = json.loads(ocr_text)

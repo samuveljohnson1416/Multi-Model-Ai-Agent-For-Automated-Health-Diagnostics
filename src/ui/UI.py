@@ -25,6 +25,9 @@ from ui.chat_interface import create_medical_chat_interface
 from core.multi_report_manager import get_or_create_session, MultiReportManager
 from core.multi_report_qa_assistant import create_multi_report_qa_assistant
 
+# Enhanced AI Agent imports
+from core.enhanced_ai_agent import create_enhanced_ai_agent
+
 
 def generate_clean_text_report(filename, validated_data, interpretation, phase2_result=None, age=None, gender=None):
     """Generate clean text-based medical report without HTML styling"""
@@ -122,6 +125,12 @@ def generate_clean_text_report(filename, validated_data, interpretation, phase2_
 
 st.set_page_config(page_title="Blood Report Analyzer", layout="wide")
 
+# Initialize session state for enhanced AI agent
+if 'enhanced_ai_agent' not in st.session_state:
+    st.session_state.enhanced_ai_agent = None
+if 'ai_session_id' not in st.session_state:
+    st.session_state.ai_session_id = None
+
 # Initialize session state for multi-report management
 if 'multi_report_session' not in st.session_state:
     st.session_state.multi_report_session = None
@@ -168,7 +177,18 @@ def initialize_ollama():
 ollama_setup = initialize_ollama()
 
 st.title("🩺 Blood Report Analyzer")
-st.markdown("AI-powered medical report analysis with multi-report comparison and automatic demographic extraction")
+st.markdown("AI-powered medical report analysis with enhanced intelligence, multi-report comparison, and goal-oriented assistance")
+
+# Initialize Enhanced AI Agent
+if not st.session_state.enhanced_ai_agent:
+    st.session_state.enhanced_ai_agent = create_enhanced_ai_agent()
+    st.session_state.ai_session_id = st.session_state.enhanced_ai_agent.start_user_session(
+        session_type="analysis"
+    )
+
+# Show AI Agent status
+agent_status = "🤖 Enhanced AI Agent Active" if st.session_state.enhanced_ai_agent else "⚠️ AI Agent Initializing"
+st.success(agent_status)
 
 # Show Ollama status
 if ollama_setup["ready"]:
@@ -493,76 +513,252 @@ if uploaded_file is not None:
                     st.info("🔄 **Comparison analysis not available**")
                     st.write("Comparison requires multiple valid reports with common parameters.")
             
-            # Multi-Report Chat Interface Section
+            # Multi-Report Chat Interface Section with Enhanced AI
             st.divider()
-            st.subheader("💬 AI Medical Assistant")
+            st.subheader("💬 Enhanced AI Medical Assistant")
             
-            # Check if we have any reports with Phase-2 analysis
-            has_enhanced_analysis = any(
-                manager.get_report_data(report_id).get('phase2_available', False) 
-                for report_id in st.session_state.current_reports.keys()
-            )
-            
-            if has_enhanced_analysis:
-                # Create multi-report Q&A assistant
-                qa_assistant = create_multi_report_qa_assistant(
-                    st.session_state.current_reports,
-                    manager.get_comparison_results()
-                )
+            # Enhanced AI Agent Integration
+            if st.session_state.enhanced_ai_agent:
                 
-                # Show session info
-                session_info = qa_assistant.get_session_summary()
-                st.info(f"🤖 **Multi-Report AI Chat Active** - {session_info['reports_loaded']} reports loaded, comparison {'available' if session_info['comparison_available'] else 'not available'}")
+                # Show AI capabilities
+                with st.expander("🧠 AI Agent Capabilities"):
+                    st.markdown("""
+                    **Enhanced Intelligence Features:**
+                    - 🎯 **Intent Recognition**: Understands your true goals beyond literal requests
+                    - 🤔 **Smart Clarification**: Asks intelligent questions when requests are unclear
+                    - 🔄 **Goal-Oriented Workflows**: Automatically plans multi-step actions to achieve your goals
+                    - 🧠 **Context Memory**: Remembers conversation history and learns your preferences
+                    - 📊 **Anticipatory Suggestions**: Proactively recommends relevant actions
+                    
+                    **Medical Analysis:**
+                    - Multi-report processing and comparison
+                    - Trend analysis and pattern recognition
+                    - Personalized health recommendations
+                    - Risk assessment and monitoring
+                    """)
                 
-                # Available topics for multi-report
-                topics = qa_assistant.get_available_topics()
-                with st.expander("💡 Available Topics"):
-                    for topic in topics:
-                        st.write(f"• {topic}")
-                
-                # Chat interface
-                if 'multi_chat_messages' not in st.session_state:
-                    st.session_state.multi_chat_messages = []
+                # Enhanced Chat Interface
+                if 'enhanced_chat_messages' not in st.session_state:
+                    st.session_state.enhanced_chat_messages = []
                 
                 # Display chat messages
-                for message in st.session_state.multi_chat_messages:
+                for message in st.session_state.enhanced_chat_messages:
                     with st.chat_message(message["role"]):
-                        st.markdown(message["content"])
+                        if message["role"] == "assistant" and "response_data" in message:
+                            # Enhanced response display
+                            response_data = message["response_data"]
+                            st.markdown(message["content"])
+                            
+                            # Show additional response elements
+                            if response_data.get("type") == "clarification_request":
+                                st.info("💡 **Clarifying Questions:**")
+                                for i, q in enumerate(response_data.get("questions", [])[:3], 1):
+                                    st.write(f"{i}. {q.get('question', '')}")
+                            
+                            elif response_data.get("type") == "context_request":
+                                st.warning("📋 **Additional Information Needed:**")
+                                for instruction in response_data.get("upload_instructions", []):
+                                    st.write(f"• {instruction}")
+                            
+                            elif response_data.get("suggestions"):
+                                st.success("💡 **Suggestions:**")
+                                for suggestion in response_data["suggestions"][:3]:
+                                    st.write(f"• {suggestion}")
+                        else:
+                            st.markdown(message["content"])
                 
-                # Chat input
-                if prompt := st.chat_input("Ask about your blood reports..."):
+                # Enhanced Chat Input
+                if prompt := st.chat_input("Ask me anything about your blood reports..."):
                     # Add user message to chat history
-                    st.session_state.multi_chat_messages.append({"role": "user", "content": prompt})
+                    st.session_state.enhanced_chat_messages.append({"role": "user", "content": prompt})
                     
                     # Display user message
                     with st.chat_message("user"):
                         st.markdown(prompt)
                     
-                    # Generate AI response
+                    # Process with Enhanced AI Agent
                     with st.chat_message("assistant"):
-                        with st.spinner("🤖 Analyzing your question..."):
-                            response = qa_assistant.answer_question(prompt)
-                        st.markdown(response)
+                        with st.spinner("🧠 Enhanced AI processing your request..."):
+                            
+                            # Prepare additional context
+                            additional_context = {
+                                'ui_state': 'streamlit_interface',
+                                'reports_uploaded': len(st.session_state.current_reports) > 0,
+                                'comparison_available': st.session_state.comparison_available,
+                                'session_type': 'interactive_analysis'
+                            }
+                            
+                            # Process message with Enhanced AI Agent
+                            response = st.session_state.enhanced_ai_agent.process_user_message(
+                                prompt, additional_context
+                            )
+                            
+                            # Display response based on type
+                            response_type = response.get('type', 'general')
+                            response_message = response.get('message', 'I apologize, but I encountered an issue processing your request.')
+                            
+                            # Display main response
+                            st.markdown(response_message)
+                            
+                            # Handle different response types
+                            if response_type == 'clarification_request':
+                                st.info("💭 **I need some clarification to help you better:**")
+                                questions = response.get('questions', [])
+                                for i, q in enumerate(questions[:3], 1):
+                                    st.write(f"**{i}.** {q.get('question', '')}")
+                                    if q.get('suggested_answers'):
+                                        st.write(f"   *Suggestions: {', '.join(q['suggested_answers'][:3])}*")
+                            
+                            elif response_type == 'context_request':
+                                st.warning("📋 **To provide the best help, I need:**")
+                                if response.get('upload_instructions'):
+                                    for instruction in response['upload_instructions']:
+                                        st.write(f"• {instruction}")
+                                
+                                if response.get('next_steps'):
+                                    st.info("**Next Steps:**")
+                                    for step in response['next_steps']:
+                                        st.write(f"• {step}")
+                            
+                            elif response_type == 'workflow_complete':
+                                st.success("✅ **Task Completed Successfully!**")
+                                if response.get('next_actions'):
+                                    st.info("**What you can do next:**")
+                                    for action in response['next_actions']:
+                                        st.write(f"• {action}")
+                            
+                            elif response_type == 'error':
+                                st.error("⚠️ **I encountered an issue, but I'm here to help!**")
+                                if response.get('suggestions'):
+                                    st.info("**Try these alternatives:**")
+                                    for suggestion in response['suggestions']:
+                                        st.write(f"• {suggestion}")
+                            
+                            # Show additional capabilities or suggestions
+                            if response.get('additional_actions'):
+                                with st.expander("🔍 More things you can try"):
+                                    for action in response['additional_actions']:
+                                        st.write(f"• {action}")
+                            
+                            # Show workflow status if available
+                            if response.get('workflow_id'):
+                                with st.expander("⚙️ Processing Details"):
+                                    workflow_status = response.get('workflow_status', {})
+                                    st.write(f"**Workflow:** {workflow_status.get('goal_description', 'Processing request')}")
+                                    st.write(f"**Status:** {workflow_status.get('status', 'unknown').title()}")
                     
                     # Add assistant response to chat history
-                    st.session_state.multi_chat_messages.append({"role": "assistant", "content": response})
+                    st.session_state.enhanced_chat_messages.append({
+                        "role": "assistant", 
+                        "content": response_message,
+                        "response_data": response
+                    })
                 
-                # Chat controls
-                col1, col2 = st.columns(2)
+                # Enhanced Chat Controls
+                col1, col2, col3 = st.columns(3)
+                
                 with col1:
                     if st.button("🗑️ Clear Chat"):
-                        st.session_state.multi_chat_messages = []
-                        qa_assistant.clear_session()
+                        st.session_state.enhanced_chat_messages = []
+                        # Reset AI agent session
+                        st.session_state.enhanced_ai_agent.end_session()
+                        st.session_state.ai_session_id = st.session_state.enhanced_ai_agent.start_user_session()
                         st.rerun()
                 
                 with col2:
-                    if st.button("📊 Session Stats"):
-                        stats = qa_assistant.get_session_summary()
-                        st.json(stats)
+                    if st.button("📊 Agent Status"):
+                        if st.session_state.ai_session_id:
+                            st.info(f"**Session ID:** {st.session_state.ai_session_id[:8]}...")
+                            st.info(f"**Messages:** {len(st.session_state.enhanced_chat_messages)}")
+                            st.info("**Status:** Active and learning from your interactions")
                 
+                with col3:
+                    if st.button("💡 Quick Help"):
+                        help_message = """
+                        **Quick Start Guide:**
+                        • Upload blood reports for analysis
+                        • Ask: "Analyze my report" or "What are my abnormal values?"
+                        • Compare: "How do my reports compare?" or "Show me trends"
+                        • Get advice: "What should I do about my cholesterol?"
+                        • Be natural - I understand context and can clarify unclear requests!
+                        """
+                        st.info(help_message)
+            
             else:
-                st.info("🤖 **AI Chat requires enhanced analysis**")
-                st.markdown("Upload blood reports and ensure AI analysis is available to enable multi-report chat.")
+                st.error("🤖 **Enhanced AI Agent not available**")
+                st.markdown("The enhanced AI features require proper initialization. Please refresh the page.")
+            
+            # Legacy Q&A Section (fallback)
+            if not st.session_state.enhanced_ai_agent:
+                st.divider()
+                st.subheader("💬 Basic Q&A Assistant (Fallback)")
+                
+                # Check if we have any reports with Phase-2 analysis
+                has_enhanced_analysis = any(
+                    manager.get_report_data(report_id).get('phase2_available', False) 
+                    for report_id in st.session_state.current_reports.keys()
+                )
+                
+                if has_enhanced_analysis:
+                    # Create multi-report Q&A assistant
+                    qa_assistant = create_multi_report_qa_assistant(
+                        st.session_state.current_reports,
+                        manager.get_comparison_results()
+                    )
+                    
+                    # Show session info
+                    session_info = qa_assistant.get_session_summary()
+                    st.info(f"🤖 **Multi-Report AI Chat Active** - {session_info['reports_loaded']} reports loaded, comparison {'available' if session_info['comparison_available'] else 'not available'}")
+                    
+                    # Available topics for multi-report
+                    topics = qa_assistant.get_available_topics()
+                    with st.expander("💡 Available Topics"):
+                        for topic in topics:
+                            st.write(f"• {topic}")
+                    
+                    # Chat interface
+                    if 'multi_chat_messages' not in st.session_state:
+                        st.session_state.multi_chat_messages = []
+                    
+                    # Display chat messages
+                    for message in st.session_state.multi_chat_messages:
+                        with st.chat_message(message["role"]):
+                            st.markdown(message["content"])
+                    
+                    # Chat input
+                    if prompt := st.chat_input("Ask about your blood reports..."):
+                        # Add user message to chat history
+                        st.session_state.multi_chat_messages.append({"role": "user", "content": prompt})
+                        
+                        # Display user message
+                        with st.chat_message("user"):
+                            st.markdown(prompt)
+                        
+                        # Generate AI response
+                        with st.chat_message("assistant"):
+                            with st.spinner("🤖 Analyzing your question..."):
+                                response = qa_assistant.answer_question(prompt)
+                            st.markdown(response)
+                        
+                        # Add assistant response to chat history
+                        st.session_state.multi_chat_messages.append({"role": "assistant", "content": response})
+                    
+                    # Chat controls
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("🗑️ Clear Basic Chat"):
+                            st.session_state.multi_chat_messages = []
+                            qa_assistant.clear_session()
+                            st.rerun()
+                    
+                    with col2:
+                        if st.button("📊 Basic Session Stats"):
+                            stats = qa_assistant.get_session_summary()
+                            st.json(stats)
+                
+                else:
+                    st.info("🤖 **AI Chat requires enhanced analysis**")
+                    st.markdown("Upload blood reports and ensure AI analysis is available to enable chat functionality.")
             
         except Exception as e:
             st.error(f"❌ Processing Error: {str(e)}")
