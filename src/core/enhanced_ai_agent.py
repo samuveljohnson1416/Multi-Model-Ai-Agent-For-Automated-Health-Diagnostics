@@ -175,65 +175,131 @@ class EnhancedAIAgent:
         """Determine the best response strategy based on intent and context"""
         primary_intent = intent_analysis.get('primary_intent')
         confidence = intent_analysis.get('confidence', 0)
-        clarification_needed = intent_analysis.get('clarification_needed', False)
         
-        # High priority: Clarification needed
-        if clarification_needed or confidence < 0.6:
-            return 'clarification_needed'
+        # Check if we have report data - if yes, always try to give direct answer
+        report_count = context.get('multi_report_data', {}).get('report_count', 0)
         
-        # Check if we have sufficient context for the intent
-        if primary_intent in ['analyze_report', 'compare_reports', 'trend_analysis']:
-            report_count = context.get('multi_report_data', {}).get('report_count', 0)
-            
-            if report_count == 0:
-                return 'context_gathering'
-            elif primary_intent == 'compare_reports' and report_count < 2:
-                return 'context_gathering'
-        
-        # High confidence and sufficient context - execute workflow
-        if confidence > 0.7:
-            return 'workflow_execution'
-        
-        # Medium confidence - provide direct answer with some workflow elements
-        if confidence > 0.5:
+        if report_count > 0:
+            # We have data - give direct answers, don't ask for clarification
             return 'direct_answer'
         
-        # Low confidence - gather more context
-        return 'context_gathering'
+        # No report data - check what user is asking for
+        if primary_intent in ['analyze_report', 'compare_reports', 'trend_analysis']:
+            # User wants analysis but no data uploaded
+            return 'context_gathering'
+        
+        # For other intents without data, still provide helpful response
+        if confidence > 0.3:
+            return 'direct_answer'
+        
+        # Very low confidence - provide general help
+        return 'direct_answer'  # Changed from 'clarification_needed' to always give an answer
     
     def _handle_clarification_request(self, message: str, intent_analysis: Dict, 
                                     context: Dict) -> Dict[str, Any]:
-        """Handle requests that need clarification"""
-        # Generate clarifying questions
-        clarification_result = self.question_generator.generate_clarifying_questions(
-            message, intent_analysis, context.get('multi_report_data', {})
-        )
+        """Handle requests - ALWAYS provide a direct answer first based on available data"""
+        primary_intent = intent_analysis.get('primary_intent')
+        report_count = context.get('multi_report_data', {}).get('report_count', 0)
         
-        questions = clarification_result.get('questions', [])
+        # ALWAYS try to give a direct answer first using the QA assistant
+        if report_count > 0 and hasattr(self, 'multi_report_session') and self.multi_report_session:
+            reports_data = self.multi_report_session.analysis_results
+            
+            if reports_data:
+                # Use the QA assistant to answer the question directly
+                qa_assistant = create_multi_report_qa_assistant(
+                    reports_data, 
+                    self.multi_report_session.get_comparison_results()
+                )
+                ai_response = qa_assistant.answer_question(message)
+                
+                # Return the direct answer without unnecessary clarifying questions
+                return {
+                    'type': 'direct_answer',
+                    'message': ai_response,
+                    'source': 'ai_analysis',
+                    'intent': primary_intent
+                }
         
-        # Format response
-        response_message = "I'd like to better understand what you're looking for. "
-        
-        if len(questions) == 1:
-            response_message += f"Could you help me with this: {questions[0]['question']}"
-        elif len(questions) > 1:
-            response_message += "Could you help me with a few questions:\n\n"
-            for i, q in enumerate(questions[:3], 1):
-                response_message += f"{i}. {q['question']}\n"
-        else:
-            response_message += "Could you provide more details about what specific information you'd like?"
+        # Only if no report data, provide helpful response based on intent
+        initial_response = self._generate_helpful_response_without_data(message, intent_analysis, context)
         
         return {
-            'type': 'clarification_request',
-            'message': response_message,
-            'questions': questions,
-            'intent_analysis': intent_analysis,
-            'suggested_actions': [
-                'Provide more specific details',
-                'Choose from suggested options',
-                'Ask a different question'
-            ]
+            'type': 'helpful_response',
+            'message': initial_response,
+            'intent': primary_intent
         }
+    
+    def _generate_helpful_response_without_data(self, message: str, intent_analysis: Dict, context: Dict) -> str:
+        """Generate helpful response when no report data is available"""
+        primary_intent = intent_analysis.get('primary_intent')
+        message_lower = message.lower()
+        
+        # Food recommendations
+        if any(word in message_lower for word in ['food', 'eat', 'diet', 'nutrition']):
+            return """Here are general food recommendations for better blood health:
+
+🥬 **For Iron & Hemoglobin**:
+• Spinach, kale, and leafy greens
+• Lean red meat, poultry, fish
+• Beans, lentils, tofu
+
+🍊 **For Vitamin C (helps iron absorption)**:
+• Citrus fruits, berries, bell peppers
+
+🥛 **For Overall Blood Health**:
+• Dairy products, eggs, nuts and seeds
+• Whole grains for fiber and B vitamins
+
+🚫 **Foods to Limit**: Excessive alcohol, high-sodium processed foods, sugary beverages
+
+*Upload your blood report for personalized food recommendations based on your specific values.*"""
+        
+        # Disease/health concerns
+        if any(word in message_lower for word in ['disease', 'sick', 'problem', 'risk', 'concern']):
+            return """Based on blood tests, doctors typically assess risk for:
+
+⚠️ **Common Conditions Detected**:
+• Anemia (low hemoglobin/RBC)
+• Diabetes risk (high glucose)
+• Heart disease risk (cholesterol levels)
+• Infections (abnormal WBC)
+• Clotting disorders (platelet issues)
+
+📋 **Your Report Analysis**:
+Upload your blood report and I'll analyze your specific values to identify any areas of concern and provide relevant recommendations.
+
+*Note: Blood tests indicate risk factors, not diagnoses. Always consult a doctor for medical advice.*"""
+        
+        # Analysis request
+        if any(word in message_lower for word in ['analyze', 'analysis', 'check', 'report']):
+            return """I'm ready to analyze your blood report! 
+
+📤 **To get started**: Upload your blood report (PDF, image, or JSON format)
+
+📊 **What I'll provide**:
+• Parameter values with normal ranges
+• Identification of abnormal values
+• Health insights and recommendations
+• Trend analysis (if multiple reports)
+
+Please upload your report using the file uploader above."""
+        
+        # Parameter explanation
+        if any(word in message_lower for word in ['what is', 'explain', 'mean', 'hemoglobin', 'wbc', 'rbc', 'platelet', 'glucose', 'cholesterol']):
+            return self._generate_parameter_explanation_response(message, context)
+        
+        # Default helpful response
+        return """I can help you with blood report analysis! Here's what I can do:
+
+📊 **Analyze Reports**: Upload your blood report for detailed analysis
+🔍 **Explain Parameters**: Ask about any blood test parameter
+💡 **Health Advice**: Get recommendations based on your results
+📈 **Track Trends**: Compare multiple reports over time
+
+**To get started**: Upload your blood report or ask me about specific blood parameters.
+
+What would you like to know?"""
     
     def _handle_workflow_execution(self, message: str, intent_analysis: Dict, 
                                  context: Dict) -> Dict[str, Any]:
@@ -304,17 +370,15 @@ class EnhancedAIAgent:
                     'message': ai_response,
                     'source': 'ai_analysis',
                     'intent': primary_intent,
-                    'confidence': intent_analysis.get('confidence'),
-                    'additional_actions': self._suggest_follow_up_actions(primary_intent, context)
+                    'confidence': intent_analysis.get('confidence')
                 }
         
-        # Fallback to general response
+        # Fallback to helpful response without data
         return {
             'type': 'direct_answer',
-            'message': self._generate_general_response(message, intent_analysis, context),
+            'message': self._generate_helpful_response_without_data(message, intent_analysis, context),
             'source': 'general_knowledge',
-            'intent': primary_intent,
-            'suggestions': self._get_helpful_suggestions(primary_intent, context)
+            'intent': primary_intent
         }
     
     def _handle_context_gathering(self, message: str, intent_analysis: Dict, 

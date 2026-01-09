@@ -266,6 +266,11 @@ if uploaded_file is not None:
                 st.error("❌ No valid content detected in the uploaded file.")
                 st.stop()
             
+            # DEBUG: Show extracted text
+            with st.expander("🔍 Debug: View Extracted Text", expanded=False):
+                st.text_area("Raw OCR Text", raw_text, height=300)
+                st.write(f"Text length: {len(raw_text)} characters")
+            
             # Process document through multi-report manager
             processing_result = manager.process_document(raw_text, uploaded_file.name)
             
@@ -280,14 +285,6 @@ if uploaded_file is not None:
             # Display processing results
             st.success(f"✅ Document processed successfully!")
             
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("📊 Reports Detected", processing_result['report_count'])
-            with col2:
-                st.metric("✅ Valid Reports", processing_result['valid_reports'])
-            with col3:
-                st.metric("🔄 Comparison", "Available" if processing_result['comparison_available'] else "Not Available")
-            
             st.divider()
             
             # Display individual report results
@@ -301,221 +298,158 @@ if uploaded_file is not None:
                 st.info("• No tabular medical data found")
                 st.stop()
             
-            # Show results for each report
-            for i, report_info in enumerate(valid_reports):
+            # CONSOLIDATED VIEW: Combine all parameters from all reports into one list
+            all_parameters = {}
+            all_abnormal_params = []
+            total_normal = 0
+            total_low = 0
+            total_high = 0
+            age = None
+            gender = None
+            phase2_result = None
+            phase2_available = False
+            
+            # Collect all data from all detected reports
+            for report_info in valid_reports:
                 report_id = report_info['report_id']
                 analysis_data = manager.get_report_data(report_id)
                 
                 if not analysis_data:
                     continue
                 
-                # Create expandable section for each report
-                with st.expander(f"📋 {report_id} - {report_info['parameters_count']} parameters", expanded=(i == 0)):
-                    
-                    # Extract data for display
-                    validated_data = analysis_data.get('validated_data', {})
-                    interpretation = analysis_data.get('interpretation', {})
-                    phase2_result = analysis_data.get('phase2_result')
-                    
-                    # Extract demographics
-                    age = None
-                    gender = None
-                    if phase2_result and 'phase2_full_result' in phase2_result:
-                        demographics = phase2_result['phase2_full_result'].get('demographics', {})
+                # Merge validated data
+                validated_data = analysis_data.get('validated_data', {})
+                for param_name, param_data in validated_data.items():
+                    # Skip invalid parameters
+                    if param_name in ['raw_content', 'raw_text', 'content'] or not param_name.strip():
+                        continue
+                    if param_name not in all_parameters:
+                        all_parameters[param_name] = param_data
+                
+                # Collect interpretation data
+                interpretation = analysis_data.get('interpretation', {})
+                summary = interpretation.get("summary", {})
+                total_normal += summary.get("normal", 0)
+                total_low += summary.get("low", 0)
+                total_high += summary.get("high", 0)
+                
+                # Collect abnormal parameters
+                abnormal_params = interpretation.get("abnormal_parameters", [])
+                for param in abnormal_params:
+                    if param not in all_abnormal_params:
+                        all_abnormal_params.append(param)
+                
+                # Get demographics and phase2 from first available
+                if not age and analysis_data.get('phase2_result'):
+                    p2_result = analysis_data['phase2_result']
+                    if 'phase2_full_result' in p2_result:
+                        demographics = p2_result['phase2_full_result'].get('demographics', {})
                         age = demographics.get('age')
                         gender = demographics.get('gender')
-                    
-                    # Show demographics if found
-                    if age is not None or gender is not None:
-                        st.success("👤 **Demographics automatically extracted:**")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("Age", f"{age} years" if age is not None else "Not found")
-                        with col2:
-                            st.metric("Gender", gender if gender is not None else "Not found")
-                    
-                    # Show key results summary
-                    st.subheader("📊 Analysis Results")
-                    
-                    # Safely extract summary with defaults
-                    summary = interpretation.get("summary", {})
-                    total_params = summary.get("total_parameters", 0)
-                    normal_count = summary.get("normal", 0)
-                    low_count = summary.get("low", 0)
-                    high_count = summary.get("high", 0)
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Total Tests", total_params)
-                    with col2:
-                        st.metric("Normal", normal_count, delta="✓" if normal_count > 0 else None)
-                    with col3:
-                        st.metric("Low", low_count, delta="⚠" if low_count > 0 else None, delta_color="inverse")
-                    with col4:
-                        st.metric("High", high_count, delta="⚠" if high_count > 0 else None, delta_color="inverse")
-                    
-                    # Show abnormal parameters if any
-                    abnormal_params = interpretation.get("abnormal_parameters", [])
-                    if abnormal_params:
-                        st.warning("⚠️ **Abnormal Results Found:**")
-                        for param in abnormal_params:
-                            status_emoji = "🔻" if param.get("status") == "LOW" else "🔺"
-                            st.write(f"{status_emoji} **{param.get('parameter', 'Unknown')}**: {param.get('value', 'Unknown')} ({param.get('status', 'Unknown')}) - Normal: {param.get('reference', 'Unknown')}")
-                    else:
-                        st.success("✅ All parameters are within normal ranges")
-                    
-                    # AI Analysis Section
-                    if analysis_data.get('phase2_available', False) and phase2_result:
-                        st.subheader("🤖 AI Analysis")
-                        
-                        if phase2_result.get("phase2_summary", {}).get("available", False):
-                            summary_data = phase2_result["phase2_summary"]
-                            
-                            # Display key AI metrics
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Overall Status", summary_data.get("overall_status", "Unknown"))
-                            with col2:
-                                st.metric("Risk Level", summary_data.get("risk_level", "Unknown"))
-                            with col3:
-                                st.metric("AI Confidence", summary_data.get("ai_confidence", "Unknown"))
-                            
-                            # Show AI recommendations if available
-                            recommendations = summary_data.get("recommendations", {})
-                            lifestyle_recs = recommendations.get("lifestyle", [])
-                            if lifestyle_recs:
-                                st.info("**AI Recommendations:**")
-                                for rec in lifestyle_recs[:3]:  # Top 3
-                                    st.write(f"• {rec}")
-                        else:
-                            st.warning("AI analysis not available for this report")
-                    else:
-                        st.info("🤖 **Enhanced AI analysis not available for this report**")
-                    
-                    # Generate and show clean text report
-                    st.subheader("📋 Medical Report")
-                    
-                    # Generate the clean text report
-                    clean_report = generate_clean_text_report(
-                        uploaded_file.name,
-                        validated_data,
-                        interpretation,
-                        phase2_result,
-                        age=age,
-                        gender=gender
-                    )
-                    
-                    # Show compact summary first
-                    st.markdown(f"""
-**🩺 {report_id} Summary**
-
-**📊 Quick Overview:**
-- Total Tests: {total_params}
-- Normal: {normal_count}
-- Abnormal: {low_count + high_count}
-                    """)
-                    
-                    # Add Read More expandable section
-                    with st.expander(f"📄 Read More - Full {report_id} Report"):
-                        st.text(clean_report)
-                    
-                    # Download options for individual report
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        # Generate text report for download
-                        report_text = clean_report
-                        
-                        st.download_button(
-                            label=f"📄 Download {report_id} Report",
-                            data=report_text,
-                            file_name=f"{report_id}_{uploaded_file.name.split('.')[0]}.txt",
-                            mime="text/plain",
-                            key=f"download_report_{report_id}"
-                        )
-                    
-                    with col2:
-                        ml_csv = analysis_data.get('ml_csv', '')
-                        if ml_csv:
-                            st.download_button(
-                                label=f"📊 Download {report_id} CSV",
-                                data=ml_csv,
-                                file_name=f"{report_id}_{uploaded_file.name.split('.')[0]}.csv",
-                                mime="text/csv",
-                                key=f"download_csv_{report_id}"
-                            )
+                    phase2_result = p2_result
+                    phase2_available = analysis_data.get('phase2_available', False)
             
-            # Comparison Analysis Section (if multiple reports)
-            if processing_result.get('comparison_available', False):
-                st.divider()
-                st.subheader("🔄 Comparative Analysis")
+            # Show demographics if found
+            if age is not None or gender is not None:
+                st.success("👤 **Patient Demographics:**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Age", f"{age} years" if age is not None else "Not found")
+                with col2:
+                    st.metric("Gender", gender if gender is not None else "Not found")
+            
+            # Show consolidated results summary
+            st.subheader("📊 Blood Report Analysis")
+            
+            total_params = len(all_parameters)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Parameters", total_params)
+            with col2:
+                st.metric("Normal", total_normal, delta="✓" if total_normal > 0 else None)
+            with col3:
+                st.metric("Low", total_low, delta="⚠" if total_low > 0 else None, delta_color="inverse")
+            with col4:
+                st.metric("High", total_high, delta="⚠" if total_high > 0 else None, delta_color="inverse")
+            
+            # Show all extracted parameters in a single table
+            st.subheader("📋 Extracted Parameters")
+            
+            if all_parameters:
+                # Create a dataframe for display
+                param_list = []
+                for param_name, param_data in all_parameters.items():
+                    status = param_data.get('status', 'UNKNOWN')
+                    status_emoji = "✅" if status == "NORMAL" else "🔻" if status == "LOW" else "🔺" if status == "HIGH" else "❓"
+                    
+                    param_list.append({
+                        "Parameter": param_name,
+                        "Value": f"{param_data.get('value', 'N/A')} {param_data.get('unit', '')}",
+                        "Status": f"{status_emoji} {status}",
+                        "Reference Range": param_data.get('reference_range', 'N/A')
+                    })
                 
-                comparison_data = manager.get_comparison_results()
-                if comparison_data and comparison_data.get('status') == 'success':
+                # Display as table
+                import pandas as pd
+                df = pd.DataFrame(param_list)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            # Show abnormal parameters if any
+            if all_abnormal_params:
+                st.warning("⚠️ **Abnormal Results Found:**")
+                for param in all_abnormal_params:
+                    status_emoji = "🔻" if param.get("status") == "LOW" else "🔺"
+                    st.write(f"{status_emoji} **{param.get('parameter', 'Unknown')}**: {param.get('value', 'Unknown')} ({param.get('status', 'Unknown')}) - Normal: {param.get('reference', 'Unknown')}")
+            else:
+                st.success("✅ All parameters are within normal ranges")
+            
+            # AI Analysis Section
+            if phase2_available and phase2_result:
+                st.subheader("🤖 AI Analysis")
+                
+                if phase2_result.get("phase2_summary", {}).get("available", False):
+                    summary_data = phase2_result["phase2_summary"]
                     
-                    # Show comparison summary
-                    summary = comparison_data.get('summary', {})
-                    col1, col2, col3, col4 = st.columns(4)
-                    
+                    # Display key AI metrics
+                    col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.metric("Reports Compared", summary.get('total_reports', 0))
+                        st.metric("Overall Status", summary_data.get("overall_status", "Unknown"))
                     with col2:
-                        st.metric("Parameters Compared", summary.get('parameters_compared', 0))
+                        st.metric("Risk Level", summary_data.get("risk_level", "Unknown"))
                     with col3:
-                        st.metric("Improving", summary.get('improving_parameters', 0), delta="↗️")
-                    with col4:
-                        st.metric("Worsening", summary.get('worsening_parameters', 0), delta="↘️", delta_color="inverse")
+                        st.metric("AI Confidence", summary_data.get("ai_confidence", "Unknown"))
                     
-                    # Overall assessment
-                    overall_assessment = summary.get('overall_assessment', 'stable')
-                    if overall_assessment == 'improving':
-                        st.success(f"📈 **Overall Trend: Improving**")
-                    elif overall_assessment == 'declining':
-                        st.error(f"📉 **Overall Trend: Declining**")
-                    else:
-                        st.info(f"📊 **Overall Trend: Stable**")
-                    
-                    # Key changes
-                    key_changes = summary.get('key_changes', [])
-                    if key_changes:
-                        st.subheader("🔍 Key Changes")
-                        for change in key_changes[:5]:
-                            change_emoji = "📈" if change['change_type'] == 'increase' else "📉"
-                            st.write(f"{change_emoji} **{change['parameter']}**: {change['percent_change']:+.1f}% change from {change['from_report']} to {change['to_report']}")
-                    
-                    # Expandable detailed comparison
-                    with st.expander("📊 Detailed Parameter Comparisons"):
-                        param_comparisons = comparison_data.get('parameter_comparisons', {})
-                        
-                        for param_name, comparison in param_comparisons.items():
-                            st.write(f"**{param_name}**")
-                            
-                            values = comparison.get('values', [])
-                            changes = comparison.get('changes', [])
-                            trend = comparison.get('trend', 'stable')
-                            
-                            # Show values across reports
-                            value_text = " → ".join([f"{v['value']} {v['unit']}" for v in values])
-                            st.write(f"Values: {value_text}")
-                            
-                            # Show trend
-                            trend_emoji = "📈" if trend == 'increasing' else "📉" if trend == 'decreasing' else "➡️"
-                            st.write(f"Trend: {trend_emoji} {trend.title()}")
-                            
-                            if changes:
-                                latest_change = changes[-1]
-                                percent_change = latest_change.get('percent_change', 0)
-                                st.write(f"Latest Change: {percent_change:+.1f}%")
-                            
-                            st.write("---")
-                
-                else:
-                    st.info("🔄 **Comparison analysis not available**")
-                    st.write("Comparison requires multiple valid reports with common parameters.")
+                    # Show AI recommendations if available
+                    recommendations = summary_data.get("recommendations", {})
+                    lifestyle_recs = recommendations.get("lifestyle", [])
+                    if lifestyle_recs:
+                        st.info("**AI Recommendations:**")
+                        for rec in lifestyle_recs[:3]:  # Top 3
+                            st.write(f"• {rec}")
+            
+            # Generate consolidated report for download
+            first_report_data = manager.get_report_data(valid_reports[0]['report_id']) if valid_reports else {}
+            clean_report = generate_clean_text_report(
+                uploaded_file.name,
+                all_parameters,
+                {'summary': {'total_parameters': total_params, 'normal': total_normal, 'low': total_low, 'high': total_high}, 'abnormal_parameters': all_abnormal_params},
+                phase2_result,
+                age=age,
+                gender=gender
+            )
+            
+            # Download button
+            st.download_button(
+                label="📄 Download Report",
+                data=clean_report,
+                file_name=f"analysis_{uploaded_file.name.split('.')[0]}.txt",
+                mime="text/plain"
+            )
             
             # Multi-Report Chat Interface Section with Enhanced AI
             st.divider()
-            st.subheader("💬 Enhanced AI Medical Assistant")
+            st.subheader("💬 AI Medical Assistant")
             
             # Enhanced AI Agent Integration
             if st.session_state.enhanced_ai_agent:

@@ -9,11 +9,11 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from .multi_report_detector import detect_multiple_reports
-from core.parser import parse_blood_report
-from core.validator import validate_parameters
-from core.interpreter import interpret_results
-from utils.csv_converter import json_to_ml_csv
-from phase2.phase2_integration_safe import integrate_phase2_analysis
+from .parser import parse_blood_report
+from .validator import validate_parameters
+from .interpreter import interpret_results
+from src.utils.csv_converter import json_to_ml_csv
+from src.phase2.phase2_integration_safe import integrate_phase2_analysis
 
 
 class MultiReportManager:
@@ -112,16 +112,8 @@ class MultiReportManager:
         parsed_data = parse_blood_report(content)
         
         if not parsed_data:
-            # Be more lenient - create a basic structure even if no parameters detected
-            parsed_data = {
-                "raw_content": {
-                    "value": "Content detected but no structured parameters found",
-                    "unit": "text",
-                    "reference_range": "N/A",
-                    "status": "UNKNOWN",
-                    "confidence": 0.5
-                }
-            }
+            # Return empty dict - no fake parameters
+            parsed_data = {}
         
         # Step 2: Validate parameters
         validated_data = validate_parameters(parsed_data)

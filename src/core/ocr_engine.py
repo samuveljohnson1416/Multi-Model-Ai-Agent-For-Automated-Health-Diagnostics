@@ -9,13 +9,56 @@ import cv2
 import numpy as np
 import json
 import re
-from phase1.medical_validator import process_medical_document
-from phase1.table_extractor import extract_medical_table
-from phase1.phase1_extractor import extract_phase1_medical_image
+import warnings
+import logging
+from src.phase1.medical_validator import process_medical_document
+from src.phase1.table_extractor import extract_medical_table
+from src.phase1.phase1_extractor import extract_phase1_medical_image
+
+# Suppress PDF processing warnings globally
+warnings.filterwarnings("ignore", category=UserWarning, module="pdfminer")
+warnings.filterwarnings("ignore", message=".*invalid float value.*")
+warnings.filterwarnings("ignore", message=".*Cannot set gray non-stroke color.*")
+
+# Suppress pdfminer logging warnings
+logging.getLogger('pdfminer').setLevel(logging.ERROR)
+logging.getLogger('pdfminer.pdfinterp').setLevel(logging.ERROR)
 
 # Set Tesseract path for Windows
 if os.name == 'nt':  # Windows
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+
+class SuppressPDFWarnings:
+    """Context manager to completely suppress PDF processing warnings"""
+    def __enter__(self):
+        # Store original warning settings
+        self.original_warnings = warnings.filters[:]
+        
+        # Suppress all pdfminer warnings
+        warnings.filterwarnings("ignore", category=UserWarning, module="pdfminer")
+        warnings.filterwarnings("ignore", message=".*invalid float value.*")
+        warnings.filterwarnings("ignore", message=".*Cannot set gray non-stroke color.*")
+        warnings.filterwarnings("ignore", module="pdfminer.pdfinterp")
+        
+        # Suppress logging
+        self.pdfminer_logger = logging.getLogger('pdfminer')
+        self.pdfinterp_logger = logging.getLogger('pdfminer.pdfinterp')
+        self.original_pdfminer_level = self.pdfminer_logger.level
+        self.original_pdfinterp_level = self.pdfinterp_logger.level
+        
+        self.pdfminer_logger.setLevel(logging.CRITICAL)
+        self.pdfinterp_logger.setLevel(logging.CRITICAL)
+        
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Restore original warning settings
+        warnings.filters[:] = self.original_warnings
+        
+        # Restore original logging levels
+        self.pdfminer_logger.setLevel(self.original_pdfminer_level)
+        self.pdfinterp_logger.setLevel(self.original_pdfinterp_level)
 
 
 class MedicalOCROrchestrator:
@@ -92,18 +135,26 @@ class MedicalOCROrchestrator:
     
     def extract_text_from_pdf_direct(self, pdf_path):
         """
-        Extract text directly from text-based PDF
+        Extract text directly from text-based PDF with enhanced error handling
         """
         try:
             digital_text = ""
-            with pdfplumber.open(pdf_path) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        digital_text += page_text + "\n"
+            # Use context manager to suppress all PDF warnings
+            with SuppressPDFWarnings():
+                with pdfplumber.open(pdf_path) as pdf:
+                    for page in pdf.pages:
+                        try:
+                            page_text = page.extract_text()
+                            if page_text:
+                                digital_text += page_text + "\n"
+                        except Exception as page_error:
+                            # Skip problematic pages but continue with others
+                            print(f"Warning: Skipping page due to error: {str(page_error)}")
+                            continue
             
             return digital_text.strip()
         except Exception as e:
+            print(f"PDF text extraction failed: {str(e)}")
             return ""
     
     def is_text_sufficient(self, text):
@@ -447,9 +498,9 @@ class MedicalOCROrchestrator:
     
     def process_pdf_file(self, pdf_path):
         """
-        Process PDF file according to Rules 2-3
+        Process PDF file with text extraction and OCR fallback
         """
-        # STEP 2: Try direct text extraction first
+        # Try direct text extraction first
         digital_text = self.extract_text_from_pdf_direct(pdf_path)
         
         if self.is_text_sufficient(digital_text):
@@ -460,10 +511,17 @@ class MedicalOCROrchestrator:
                 confidence=0.95
             )
         
-        # STEP 3: Fallback to OCR for scanned PDF
+        # Fallback to OCR for scanned PDF
         try:
             # Convert PDF pages to images
-            pages = convert_from_path(pdf_path, dpi=300)  # High resolution
+            with SuppressPDFWarnings():
+                try:
+                    pages = convert_from_path(pdf_path, dpi=200)
+                except Exception as pdf_error:
+                    try:
+                        pages = convert_from_path(pdf_path, dpi=150)
+                    except Exception as pdf_error2:
+                        pages = convert_from_path(pdf_path, dpi=100, fmt='jpeg')
             
             combined_ocr_result = {
                 'text': '',
@@ -475,16 +533,19 @@ class MedicalOCROrchestrator:
             valid_pages = 0
             
             for page_num, page_image in enumerate(pages):
-                ocr_result = self.perform_ocr_with_validation(page_image)
-                
-                if ocr_result:
-                    is_valid, validation_msg = self.validate_ocr_output(ocr_result)
+                try:
+                    ocr_result = self.perform_ocr_with_validation(page_image)
                     
-                    if is_valid:
-                        combined_ocr_result['text'] += f"\n--- Page {page_num + 1} ---\n"
-                        combined_ocr_result['text'] += ocr_result['text']
-                        total_confidence += ocr_result['confidence']
-                        valid_pages += 1
+                    if ocr_result:
+                        is_valid, validation_msg = self.validate_ocr_output(ocr_result)
+                        
+                        if is_valid:
+                            combined_ocr_result['text'] += f"\n--- Page {page_num + 1} ---\n"
+                            combined_ocr_result['text'] += ocr_result['text']
+                            total_confidence += ocr_result['confidence']
+                            valid_pages += 1
+                except Exception as page_error:
+                    continue
             
             if valid_pages > 0:
                 combined_ocr_result['confidence'] = total_confidence / valid_pages
@@ -505,7 +566,7 @@ class MedicalOCROrchestrator:
                 return self.create_low_confidence_response("No valid pages found in PDF")
                 
         except Exception as e:
-            return self.create_error_response(f"PDF OCR processing failed: {str(e)}")
+            return self.create_error_response(f"PDF OCR processing failed: {str(e)}. This may be due to a corrupted or unsupported PDF format.")
     
     def process_image_file(self, image_path):
         """
