@@ -1,161 +1,140 @@
-# Multi-Model-Ai-Agent-For-Automated-Health-Diagnostics
-An Infosys Springboard Virtual Internship project that builds an AI system to extract data from blood reports using OCR, analyze key health parameters, detect abnormalities and patterns, and generate clear, personalized health insights through a multi-model pipeline.
+# Blood Report Analysis System
 
+An AI-powered medical report analysis system that provides comprehensive blood work interpretation with intelligent insights and multi-report comparison capabilities.
 
+## Features
 
----
+- **Advanced OCR Processing** - Extract text from PDF and image files with multiple preprocessing strategies
+- **Comprehensive Blood Analysis** - Parse 20+ blood parameters including CBC, differential counts, and chemistry panels
+- **Intelligent AI Assistant** - Goal-oriented AI that provides personalized health recommendations
+- **Multi-Report Comparison** - Track health trends across multiple reports over time
+- **Real-time Chat Interface** - Interactive Q&A about your blood work results
 
-# 🚀 **Multi-Model AI Agent for Automated Health Diagnostics**
+## Installation
 
-An intelligent AI system that **reads blood reports**, analyzes medical patterns, detects risks, and generates **personalized health recommendations**.
-Designed to go beyond simple command execution by **inferring user intent**, even when instructions are vague.
-
----
-
-# 🧠 **Project Overview**
-
-```
-   .-----------------------------.
-   |  AI HEALTH DIAGNOSTICS     |
-   |    MULTI–MODEL ENGINE      |
-   '-----------------------------'
-           |   |    |
-      -----'   |    '-----
-     INPUT → ANALYSIS → OUTPUT
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd blood-report-analysis
 ```
 
-This system processes medical reports in **PDF, scanned image, or JSON format**, extracts parameters through OCR, analyzes them using **three cooperating AI models**, and produces a structured medical-style summary.
-
----
-
-# ✨ **Key Features**
-
-```
- .------------------------------------------------.
- |  • Intent Inference                             |
- |  • Multi-Model Medical Analysis                 |
- |  • OCR-Based Data Extraction                    |
- |  • Pattern Detection & Risk Assessment          |
- |  • Personalized Health Recommendations          |
- '------------------------------------------------'
+2. Create a virtual environment:
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
-* Understands user intent, not just literal text
-* Detects abnormal values (high/low/borderline)
-* Identifies combinations (lipid ratios, kidney markers)
-* Generates advice based on findings and user profile
-
----
-
-# 🔁 **System Workflow (ASCII Diagram)**
-
-```
-   .-------------------.       .-------------------.
-   |   1. INPUT        |       |  2. EXTRACTION     |
-   |  (PDF / Image)    | ----> |  OCR + Cleaning    |
-   '-------------------'       '-------------------'
-                |
-                v
-   .-------------------.
-   | 3. AI MODELS      |
-   |-------------------|
-   | Model 1: Values   |
-   | Model 2: Patterns |
-   | Model 3: Context  |
-   '-------------------'
-                |
-                v
-   .-------------------.
-   | 4. SYNTHESIS      |
-   | Full Interpretation|
-   '-------------------'
-                |
-                v
-   .-------------------.
-   | 5. OUTPUT REPORT  |
-   | Summary + Advice  |
-   '-------------------'
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
 ```
 
----
+4. Install Tesseract OCR:
+   - **Windows**: Download from [GitHub releases](https://github.com/UB-Mannheim/tesseract/wiki)
+   - **macOS**: `brew install tesseract`
+   - **Linux**: `sudo apt-get install tesseract-ocr`
 
-# 🧬 **Three-Model AI Analysis Engine**
+5. Install Ollama (for AI features):
+   - Download from [ollama.ai](https://ollama.ai)
+   - Install Mistral model: `ollama pull mistral:instruct`
 
+## Usage
+
+1. Start the application:
+```bash
+python start_project.py
 ```
-   .--------------------------------------.
-   |   MULTI–MODEL ANALYSIS UNIT          |
-   |--------------------------------------|
-   |  [Model 1] Parameter Interpretation   |
-   |      ↓ Compare with reference ranges  |
-   |--------------------------------------|
-   |  [Model 2] Pattern Recognition        |
-   |      ↓ Ratios, correlations, risks    |
-   |--------------------------------------|
-   |  [Model 3] Contextual Analysis        |
-   |      ↓ Age, gender, lifestyle         |
-   '--------------------------------------'
-```
-
-Each model contributes a unique layer of understanding:
-
-### ✔ Model 1 – Baseline Interpretation
-
-* Detects high, low, or borderline values
-* Uses standard medical ranges
-
-### ✔ Model 2 – Pattern Recognition & Risks
-
-* Lipid ratios
-* Kidney/liver function indicators
-* Metabolic patterns
-
-### ✔ Model 3 – Optional Contextual Model
-
-* Adjusts interpretation using patient profile
-
----
-
-# 🧩 **Architecture (ASCII Block Diagram)**
-
-```
- .------------------------------------------------------------.
- |                   SYSTEM ARCHITECTURE                      |
- |------------------------------------------------------------|
- | Input Parser | OCR Engine | Validator | Orchestrator       |
- |------------------------------------------------------------|
- | Model 1 | Model 2 | Model 3 | Synthesis Engine             |
- |------------------------------------------------------------|
- | Recommendation Engine | Report Generator                   |
- '------------------------------------------------------------'
+Or run directly:
+```bash
+streamlit run src/ui/UI.py
 ```
 
-Core components include:
+2. Open your browser and navigate to `http://localhost:8501`
 
-* **Input Interface** – PDFs, images, JSON
-* **OCR Extraction Engine** – pulls values + units
-* **Validation Module** – ensures clean, standardized data
-* **AI Models (1–3)** – perform multi-level medical reasoning
-* **Findings Synthesizer** – merges insights
-* **Recommendation Engine** – generates personalized advice
-* **Report Renderer** – formats final output
+3. Upload your blood report (PDF, PNG, JPG, or JSON format)
 
+4. View comprehensive analysis and chat with the AI assistant
 
+## Supported File Formats
 
----
+- **PDF files** - Scanned or digital blood reports
+- **Image files** - PNG, JPG, JPEG format medical reports  
+- **JSON files** - Structured medical data
+- **CSV files** - Tabular blood work data
 
-# 📄 **End-to-End Summary (Visual Text Format)**
+## Project Structure
 
 ```
- INPUT → OCR → CLEANING → AI ANALYSIS → FINDINGS → ADVICE → REPORT
+├── src/
+│   ├── core/           # Core analysis modules
+│   ├── ui/             # User interface components
+│   ├── utils/          # Utility functions
+│   ├── phase1/         # Basic extraction modules
+│   └── phase2/         # Advanced AI analysis
+├── config/             # Configuration files
+├── data/               # Sample data and test files
+├── docs/               # Documentation
+├── scripts/            # Setup and utility scripts
+└── tests/              # Test files
 ```
 
-### What the system ultimately delivers:
+## Key Components
 
-* A readable health summary
-* Highlighted abnormalities
-* Detected medical patterns
-* Personalized lifestyle/diet recommendations
-* Disclaimer-based final report
+### Core Modules
+- **OCR Engine** - Multi-strategy text extraction from medical documents
+- **Blood Parser** - Comprehensive parameter extraction (20+ parameters)
+- **AI Agent** - Enhanced intelligence with goal-oriented workflows
+- **Multi-Report Manager** - Handle multiple reports with comparison analysis
 
----
+### Analysis Pipeline
+1. **Document Ingestion** - OCR processing with validation
+2. **Parameter Extraction** - Parse medical values, units, and reference ranges
+3. **Data Validation** - Ensure accuracy and completeness
+4. **Medical Interpretation** - Determine normal/abnormal status
+5. **AI Analysis** - Personalized insights and recommendations
 
+## Blood Parameters Supported
+
+### Complete Blood Count (CBC)
+- White Blood Cell (WBC), Red Blood Cell (RBC), Hemoglobin, Hematocrit
+- Mean Cell Volume (MCV), Mean Cell Hemoglobin (MCH), MCHC, RDW
+- Platelet Count, Mean Platelet Volume
+
+### Differential Count
+- Neutrophils, Lymphocytes, Monocytes, Eosinophils, Basophils
+- Both percentage and absolute counts
+
+### Chemistry Panel
+- Glucose, Cholesterol, Creatinine, BUN, Liver enzymes
+
+## AI Features
+
+- **Intent Recognition** - Understands user goals beyond literal questions
+- **Clarifying Questions** - Asks intelligent follow-ups for better assistance
+- **Context Memory** - Remembers conversation history and preferences
+- **Trend Analysis** - Identifies patterns across multiple reports
+- **Personalized Recommendations** - Tailored health advice based on results
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/new-feature`)
+3. Commit your changes (`git commit -am 'Add new feature'`)
+4. Push to the branch (`git push origin feature/new-feature`)
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Disclaimer
+
+This tool is for informational purposes only and should not replace professional medical advice. Always consult with healthcare professionals for medical decisions and interpretations.
+
+## Technical Requirements
+
+- Python 3.8+
+- Tesseract OCR
+- Ollama (optional, for AI features)
+- 4GB+ RAM recommended
+- Windows/macOS/Linux support

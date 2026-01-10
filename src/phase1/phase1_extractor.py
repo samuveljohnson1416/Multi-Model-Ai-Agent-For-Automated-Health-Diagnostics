@@ -4,7 +4,7 @@ import io
 
 
 class Phase1MedicalImageExtractor:
-    """Phase-1 Medical Image Extraction Agent - Image-aware OCR reconstruction"""
+    """Phase-1 Medical Image Extraction Agent - Image-aware OCR reconstruction with demographic extraction"""
     
     def __init__(self):
         # Valid laboratory test anchors (case-insensitive)
@@ -13,6 +13,22 @@ class Phase1MedicalImageExtractor:
             'mcv', 'mch', 'mchc', 'rdw', 'total wbc count', 'wbc count',
             'neutrophils', 'lymphocytes', 'eosinophils', 'monocytes', 'basophils',
             'platelet count', 'platelets'
+        ]
+        
+        # Demographic extraction patterns
+        self.age_patterns = [
+            r'(?i)age\s*:?\s*(\d{1,3})\s*(?:years?|yrs?|y)?',
+            r'(?i)(\d{1,3})\s*(?:years?|yrs?|y)\s*(?:old)?',
+            r'(?i)(?:patient\s+)?age\s*:?\s*(\d{1,3})',
+            r'(?i)dob\s*:?\s*\d{1,2}[\/\-]\d{1,2}[\/\-](\d{2,4})',  # Calculate from DOB
+            r'(?i)born\s*:?\s*\d{1,2}[\/\-]\d{1,2}[\/\-](\d{2,4})',
+        ]
+        
+        self.gender_patterns = [
+            r'(?i)(?:sex|gender)\s*:?\s*(male|female|m|f)\b',
+            r'(?i)\b(male|female)\b',
+            r'(?i)\b(mr|mrs|ms|miss)\b',  # Titles can indicate gender
+            r'(?i)patient\s*:?\s*.*?\b(male|female|m|f)\b',
         ]
         
         # OCR noise patterns to completely ignore
@@ -24,7 +40,7 @@ class Phase1MedicalImageExtractor:
             r'(?i)(?:qr\s*code|barcode)',
             r'(?i)(?:interpretation|conclusion|comment|remarks)',
             r'(?i)(?:signature|authorized|verified|approved)',
-            r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}',  # Dates
+            r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}',  # Dates (except for DOB extraction)
             r'\d{1,2}:\d{2}(?::\d{2})?',  # Times
             r'^[A-Z\s]{15,}$',  # Long all-caps headers
             r'(?i)(?:high|low|normal|abnormal)$',  # Isolated status words
@@ -48,6 +64,59 @@ class Phase1MedicalImageExtractor:
             r'(?i)(/cumm|cells/cumm)',
             r'(?i)(fl|pg|%|percent)',
         ]
+    
+    def extract_demographics(self, ocr_text):
+        """Extract age and gender from OCR text"""
+        demographics = {
+            'age': None,
+            'gender': None,
+            'age_extracted': False,
+            'gender_extracted': False
+        }
+        
+        # Extract age
+        for pattern in self.age_patterns:
+            match = re.search(pattern, ocr_text)
+            if match:
+                if 'dob' in pattern or 'born' in pattern:
+                    # Calculate age from birth year
+                    birth_year = int(match.group(1))
+                    if birth_year < 100:  # 2-digit year
+                        birth_year += 1900 if birth_year > 30 else 2000
+                    
+                    from datetime import datetime
+                    current_year = datetime.now().year
+                    age = current_year - birth_year
+                    
+                    if 0 <= age <= 120:  # Reasonable age range
+                        demographics['age'] = age
+                        demographics['age_extracted'] = True
+                        break
+                else:
+                    # Direct age extraction
+                    age = int(match.group(1))
+                    if 0 <= age <= 120:  # Reasonable age range
+                        demographics['age'] = age
+                        demographics['age_extracted'] = True
+                        break
+        
+        # Extract gender
+        for pattern in self.gender_patterns:
+            match = re.search(pattern, ocr_text)
+            if match:
+                gender_text = match.group(1).lower()
+                
+                # Normalize gender
+                if gender_text in ['male', 'm', 'mr']:
+                    demographics['gender'] = 'Male'
+                    demographics['gender_extracted'] = True
+                    break
+                elif gender_text in ['female', 'f', 'mrs', 'ms', 'miss']:
+                    demographics['gender'] = 'Female'
+                    demographics['gender_extracted'] = True
+                    break
+        
+        return demographics
     
     def is_ocr_failure(self, ocr_text):
         """Detect OCR failure conditions"""
@@ -258,19 +327,22 @@ class Phase1MedicalImageExtractor:
         }
     
     def extract_to_csv(self, ocr_text):
-        """Main extraction method - returns CSV format only"""
+        """Main extraction method - returns CSV format with demographics"""
         
         # Check for OCR failure
         if self.is_ocr_failure(ocr_text):
-            # Return empty CSV with headers
-            return "test_name,value,unit,reference_range,method,raw_text\n"
+            # Return empty CSV with headers including demographics
+            return "test_name,value,unit,reference_range,method,raw_text,age,gender\n"
+        
+        # Extract demographics from OCR text
+        demographics = self.extract_demographics(ocr_text)
         
         # Reconstruct table rows using image-aware reasoning
         reconstructed_rows = self.reconstruct_table_rows(ocr_text)
         
         if not reconstructed_rows:
-            # No valid rows found - return empty CSV with headers
-            return "test_name,value,unit,reference_range,method,raw_text\n"
+            # No valid rows found - return empty CSV with headers including demographics
+            return "test_name,value,unit,reference_range,method,raw_text,age,gender\n"
         
         # Extract data from each row - COMPLETENESS RULE: Include ALL detected tests
         extracted_data = []
@@ -289,15 +361,19 @@ class Phase1MedicalImageExtractor:
                 if not row_data['method']:
                     row_data['method'] = 'NA'
                 
+                # Add demographics to each row
+                row_data['age'] = demographics['age'] if demographics['age'] is not None else 'NA'
+                row_data['gender'] = demographics['gender'] if demographics['gender'] is not None else 'NA'
+                
                 extracted_data.append(row_data)
         
         # Generate CSV output
         if not extracted_data:
-            return "test_name,value,unit,reference_range,method,raw_text\n"
+            return "test_name,value,unit,reference_range,method,raw_text,age,gender\n"
         
         # Create CSV string
         output = io.StringIO()
-        fieldnames = ['test_name', 'value', 'unit', 'reference_range', 'method', 'raw_text']
+        fieldnames = ['test_name', 'value', 'unit', 'reference_range', 'method', 'raw_text', 'age', 'gender']
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         
         writer.writeheader()
