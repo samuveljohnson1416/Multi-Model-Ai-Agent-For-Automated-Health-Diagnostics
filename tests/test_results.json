@@ -1,0 +1,303 @@
+{
+  "total_tests": 42,
+  "passed": 42,
+  "failed": 0,
+  "accuracy": 100.0,
+  "timestamp": "2026-01-15T13:18:25.443137",
+  "results": [
+    {
+      "test": "Classification: TR001 - Hemoglobin",
+      "passed": true,
+      "expected": "NORMAL",
+      "actual": "NORMAL",
+      "details": "Value: 15.0, Age: 35, Gender: Male"
+    },
+    {
+      "test": "Classification: TR001 - Glucose",
+      "passed": true,
+      "expected": "NORMAL",
+      "actual": "NORMAL",
+      "details": "Value: 90, Age: 35, Gender: Male"
+    },
+    {
+      "test": "Classification: TR002 - Hemoglobin",
+      "passed": true,
+      "expected": "LOW",
+      "actual": "LOW",
+      "details": "Value: 9.5, Age: 28, Gender: Female"
+    },
+    {
+      "test": "Classification: TR002 - MCV",
+      "passed": true,
+      "expected": "LOW",
+      "actual": "LOW",
+      "details": "Value: 72, Age: 28, Gender: Female"
+    },
+    {
+      "test": "Classification: TR003 - Glucose",
+      "passed": true,
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "details": "Value: 145, Age: 55, Gender: Male"
+    },
+    {
+      "test": "Classification: TR003 - HDL",
+      "passed": true,
+      "expected": "LOW",
+      "actual": "LOW",
+      "details": "Value: 38, Age: 55, Gender: Male"
+    },
+    {
+      "test": "Classification: TR004 - Cholesterol",
+      "passed": true,
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "details": "Value: 280, Age: 60, Gender: Male"
+    },
+    {
+      "test": "Classification: TR004 - HDL",
+      "passed": true,
+      "expected": "LOW",
+      "actual": "LOW",
+      "details": "Value: 35, Age: 60, Gender: Male"
+    },
+    {
+      "test": "Classification: TR004 - LDL",
+      "passed": true,
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "details": "Value: 180, Age: 60, Gender: Male"
+    },
+    {
+      "test": "Classification: TR005 - Hemoglobin",
+      "passed": true,
+      "expected": "NORMAL",
+      "actual": "NORMAL",
+      "details": "Value: 12.5, Age: 8, Gender: Male"
+    },
+    {
+      "test": "Classification: TR005 - WBC",
+      "passed": true,
+      "expected": "NORMAL",
+      "actual": "NORMAL",
+      "details": "Value: 9000, Age: 8, Gender: Male"
+    },
+    {
+      "test": "Classification: TR006 - Hemoglobin",
+      "passed": true,
+      "expected": "NORMAL",
+      "actual": "NORMAL",
+      "details": "Value: 11.5, Age: 72, Gender: Female"
+    },
+    {
+      "test": "Classification: TR006 - Glucose",
+      "passed": true,
+      "expected": "NORMAL",
+      "actual": "NORMAL",
+      "details": "Value: 105, Age: 72, Gender: Female"
+    },
+    {
+      "test": "Classification: TR007 - WBC",
+      "passed": true,
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "details": "Value: 18000, Age: 40, Gender: Male"
+    },
+    {
+      "test": "Classification: TR007 - Neutrophils",
+      "passed": true,
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "details": "Value: 85, Age: 40, Gender: Male"
+    },
+    {
+      "test": "Classification: TR008 - Platelet",
+      "passed": true,
+      "expected": "LOW",
+      "actual": "LOW",
+      "details": "Value: 80000, Age: 45, Gender: Female"
+    },
+    {
+      "test": "Classification: TR009 - Glucose",
+      "passed": true,
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "details": "Value: 130, Age: 50, Gender: Male"
+    },
+    {
+      "test": "Classification: TR009 - Triglycerides",
+      "passed": true,
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "details": "Value: 200, Age: 50, Gender: Male"
+    },
+    {
+      "test": "Classification: TR009 - HDL",
+      "passed": true,
+      "expected": "LOW",
+      "actual": "LOW",
+      "details": "Value: 32, Age: 50, Gender: Male"
+    },
+    {
+      "test": "Classification: TR010 - Hemoglobin",
+      "passed": true,
+      "expected": "LOW",
+      "actual": "LOW",
+      "details": "Value: 9.0, Age: 65, Gender: Female"
+    },
+    {
+      "test": "Classification: TR010 - MCV",
+      "passed": true,
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "details": "Value: 110, Age: 65, Gender: Female"
+    },
+    {
+      "test": "Classification: TR010 - Vitamin_B12",
+      "passed": true,
+      "expected": "LOW",
+      "actual": "LOW",
+      "details": "Value: 150, Age: 65, Gender: Female"
+    },
+    {
+      "test": "DynamicRange: Hemoglobin (Age:35, Gender:Male)",
+      "passed": true,
+      "expected": "14.0-18.0",
+      "actual": "14.0-18.0",
+      "details": ""
+    },
+    {
+      "test": "DynamicRange: Hemoglobin (Age:35, Gender:Female)",
+      "passed": true,
+      "expected": "12.0-16.0",
+      "actual": "12.0-16.0",
+      "details": ""
+    },
+    {
+      "test": "DynamicRange: Hemoglobin (Age:70, Gender:Male)",
+      "passed": true,
+      "expected": "12.5-17.0",
+      "actual": "12.5-17.0",
+      "details": ""
+    },
+    {
+      "test": "DynamicRange: Hemoglobin (Age:8, Gender:Male)",
+      "passed": true,
+      "expected": "11.5-15.5",
+      "actual": "11.5-15.5",
+      "details": ""
+    },
+    {
+      "test": "DynamicRange: HDL (Age:None, Gender:Male)",
+      "passed": true,
+      "expected": "40-60",
+      "actual": "40-60",
+      "details": ""
+    },
+    {
+      "test": "DynamicRange: HDL (Age:None, Gender:Female)",
+      "passed": true,
+      "expected": "50-70",
+      "actual": "50-70",
+      "details": ""
+    },
+    {
+      "test": "DynamicRange: Glucose (Age:70, Gender:None)",
+      "passed": true,
+      "expected": "70-110",
+      "actual": "70-110",
+      "details": ""
+    },
+    {
+      "test": "DynamicRange: WBC (Age:5, Gender:None)",
+      "passed": true,
+      "expected": "5000-15000",
+      "actual": "5000-15000",
+      "details": ""
+    },
+    {
+      "test": "UnitConversion: Hemoglobin g/L to g/dL",
+      "passed": true,
+      "expected": "15.0",
+      "actual": "15.0",
+      "details": "Original: 150 g/L"
+    },
+    {
+      "test": "UnitConversion: Glucose mmol/L to mg/dL",
+      "passed": true,
+      "expected": "99.1",
+      "actual": "99.099",
+      "details": "Original: 5.5 mmol/L"
+    },
+    {
+      "test": "UnitConversion: Cholesterol mmol/L to mg/dL",
+      "passed": true,
+      "expected": "201.1",
+      "actual": "201.084",
+      "details": "Original: 5.2 mmol/L"
+    },
+    {
+      "test": "UnitConversion: Creatinine umol/L to mg/dL",
+      "passed": true,
+      "expected": "1.0",
+      "actual": "0.9989",
+      "details": "Original: 88.4 umol/L"
+    },
+    {
+      "test": "UnitConversion: Triglycerides mmol/L to mg/dL",
+      "passed": true,
+      "expected": "150.6",
+      "actual": "150.569",
+      "details": "Original: 1.7 mmol/L"
+    },
+    {
+      "test": "LipidRatio: TC/HDL",
+      "passed": true,
+      "expected": "4.0",
+      "actual": "4.0",
+      "details": "TC=200, HDL=50"
+    },
+    {
+      "test": "LipidRatio: LDL/HDL",
+      "passed": true,
+      "expected": "2.4",
+      "actual": "2.4",
+      "details": "LDL=120, HDL=50"
+    },
+    {
+      "test": "LipidRatio: TG/HDL",
+      "passed": true,
+      "expected": "3.0",
+      "actual": "3.0",
+      "details": "TG=150, HDL=50"
+    },
+    {
+      "test": "Framingham: High Risk Male",
+      "passed": true,
+      "expected": "Moderate or High",
+      "actual": "High",
+      "details": "Age 60, Male, Smoker, Hypertensive, TC=280, HDL=35"
+    },
+    {
+      "test": "Framingham: Low Risk Female",
+      "passed": true,
+      "expected": "Low",
+      "actual": "Low",
+      "details": "Age 35, Female, Non-smoker, TC=180, HDL=65"
+    },
+    {
+      "test": "MetabolicSyndrome: Positive Case",
+      "passed": true,
+      "expected": "True (\u22653 criteria)",
+      "actual": "True (5 criteria)",
+      "details": "TG=200, HDL=35, Glucose=115, Hypertensive"
+    },
+    {
+      "test": "MetabolicSyndrome: Negative Case",
+      "passed": true,
+      "expected": "False (<3 criteria)",
+      "actual": "False (0 criteria)",
+      "details": "TG=100, HDL=55, Glucose=85, Healthy"
+    }
+  ]
+}

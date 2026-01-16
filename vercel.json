@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.py"
+    }
+  ],
+  "env": {
+    "HF_API_TOKEN": "@hf_api_token",
+    "LLM_PROVIDER_PRIORITY": "hf_only",
+    "OCR_SPACE_API_KEY": "@ocr_space_api_key",
+    "OCR_PROVIDER_PRIORITY": "api_only"
+  }
+}

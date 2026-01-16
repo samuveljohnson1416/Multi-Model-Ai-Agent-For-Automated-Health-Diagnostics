@@ -1,0 +1,557 @@
+{
+  "Hemoglobin": {
+    "min": 12.0,
+    "max": 17.0,
+    "unit": "g/dL"
+  },
+  "RBC": {
+    "min": 4.5,
+    "max": 5.5,
+    "unit": "mill/cumm"
+  },
+  "WBC": {
+    "min": 4000,
+    "max": 11000,
+    "unit": "/cumm"
+  },
+  "Platelet": {
+    "min": 150000,
+    "max": 400000,
+    "unit": "/cumm"
+  },
+  "PCV": {
+    "min": 36,
+    "max": 50,
+    "unit": "%"
+  },
+  "MCV": {
+    "min": 80,
+    "max": 100,
+    "unit": "fL"
+  },
+  "MCH": {
+    "min": 27,
+    "max": 32,
+    "unit": "pg"
+  },
+  "MCHC": {
+    "min": 32,
+    "max": 36,
+    "unit": "g/dL"
+  },
+  "RDW": {
+    "min": 11.5,
+    "max": 14.5,
+    "unit": "%"
+  },
+  "MPV": {
+    "min": 7.5,
+    "max": 11.5,
+    "unit": "fL"
+  },
+  "PDW": {
+    "min": 10,
+    "max": 17,
+    "unit": "%"
+  },
+  "PCT": {
+    "min": 0.15,
+    "max": 0.4,
+    "unit": "%"
+  },
+  "Neutrophils": {
+    "min": 40,
+    "max": 70,
+    "unit": "%"
+  },
+  "Lymphocytes": {
+    "min": 20,
+    "max": 40,
+    "unit": "%"
+  },
+  "Monocytes": {
+    "min": 2,
+    "max": 8,
+    "unit": "%"
+  },
+  "Eosinophils": {
+    "min": 1,
+    "max": 6,
+    "unit": "%"
+  },
+  "Basophils": {
+    "min": 0,
+    "max": 2,
+    "unit": "%"
+  },
+  "Neutrophils_Abs": {
+    "min": 2000,
+    "max": 7000,
+    "unit": "/cumm"
+  },
+  "Lymphocytes_Abs": {
+    "min": 1000,
+    "max": 3000,
+    "unit": "/cumm"
+  },
+  "Monocytes_Abs": {
+    "min": 200,
+    "max": 800,
+    "unit": "/cumm"
+  },
+  "Eosinophils_Abs": {
+    "min": 20,
+    "max": 500,
+    "unit": "/cumm"
+  },
+  "Basophils_Abs": {
+    "min": 0,
+    "max": 100,
+    "unit": "/cumm"
+  },
+  "ESR": {
+    "min": 0,
+    "max": 20,
+    "unit": "mm/hr"
+  },
+  "Glucose": {
+    "min": 70,
+    "max": 100,
+    "unit": "mg/dL"
+  },
+  "Glucose_PP": {
+    "min": 70,
+    "max": 140,
+    "unit": "mg/dL"
+  },
+  "Glucose_Random": {
+    "min": 70,
+    "max": 140,
+    "unit": "mg/dL"
+  },
+  "HbA1c": {
+    "min": 4.0,
+    "max": 5.6,
+    "unit": "%"
+  },
+  "Cholesterol": {
+    "min": 0,
+    "max": 200,
+    "unit": "mg/dL"
+  },
+  "Triglycerides": {
+    "min": 0,
+    "max": 150,
+    "unit": "mg/dL"
+  },
+  "HDL": {
+    "min": 40,
+    "max": 60,
+    "unit": "mg/dL"
+  },
+  "LDL": {
+    "min": 0,
+    "max": 100,
+    "unit": "mg/dL"
+  },
+  "VLDL": {
+    "min": 5,
+    "max": 40,
+    "unit": "mg/dL"
+  },
+  "Cholesterol_HDL_Ratio": {
+    "min": 0,
+    "max": 5,
+    "unit": "ratio"
+  },
+  "Creatinine": {
+    "min": 0.6,
+    "max": 1.2,
+    "unit": "mg/dL"
+  },
+  "Urea": {
+    "min": 15,
+    "max": 40,
+    "unit": "mg/dL"
+  },
+  "BUN": {
+    "min": 7,
+    "max": 20,
+    "unit": "mg/dL"
+  },
+  "Uric_Acid": {
+    "min": 3.5,
+    "max": 7.2,
+    "unit": "mg/dL"
+  },
+  "Sodium": {
+    "min": 136,
+    "max": 145,
+    "unit": "mEq/L"
+  },
+  "Potassium": {
+    "min": 3.5,
+    "max": 5.0,
+    "unit": "mEq/L"
+  },
+  "Chloride": {
+    "min": 98,
+    "max": 106,
+    "unit": "mEq/L"
+  },
+  "Calcium": {
+    "min": 8.5,
+    "max": 10.5,
+    "unit": "mg/dL"
+  },
+  "Phosphorus": {
+    "min": 2.5,
+    "max": 4.5,
+    "unit": "mg/dL"
+  },
+  "Magnesium": {
+    "min": 1.7,
+    "max": 2.2,
+    "unit": "mg/dL"
+  },
+  "Iron": {
+    "min": 60,
+    "max": 170,
+    "unit": "mcg/dL"
+  },
+  "TIBC": {
+    "min": 250,
+    "max": 370,
+    "unit": "mcg/dL"
+  },
+  "Ferritin": {
+    "min": 12,
+    "max": 150,
+    "unit": "ng/mL"
+  },
+  "Transferrin": {
+    "min": 200,
+    "max": 360,
+    "unit": "mg/dL"
+  },
+  "Vitamin_B12": {
+    "min": 200,
+    "max": 900,
+    "unit": "pg/mL"
+  },
+  "Vitamin_D": {
+    "min": 30,
+    "max": 100,
+    "unit": "ng/mL"
+  },
+  "Folate": {
+    "min": 3,
+    "max": 17,
+    "unit": "ng/mL"
+  },
+  "Total_Protein": {
+    "min": 6.0,
+    "max": 8.3,
+    "unit": "g/dL"
+  },
+  "Albumin": {
+    "min": 3.5,
+    "max": 5.0,
+    "unit": "g/dL"
+  },
+  "Globulin": {
+    "min": 2.0,
+    "max": 3.5,
+    "unit": "g/dL"
+  },
+  "AG_Ratio": {
+    "min": 1.0,
+    "max": 2.5,
+    "unit": "ratio"
+  },
+  "Bilirubin_Total": {
+    "min": 0.1,
+    "max": 1.2,
+    "unit": "mg/dL"
+  },
+  "Bilirubin_Direct": {
+    "min": 0.0,
+    "max": 0.3,
+    "unit": "mg/dL"
+  },
+  "Bilirubin_Indirect": {
+    "min": 0.1,
+    "max": 0.9,
+    "unit": "mg/dL"
+  },
+  "SGOT": {
+    "min": 0,
+    "max": 40,
+    "unit": "U/L"
+  },
+  "SGPT": {
+    "min": 0,
+    "max": 40,
+    "unit": "U/L"
+  },
+  "AST": {
+    "min": 0,
+    "max": 40,
+    "unit": "U/L"
+  },
+  "ALT": {
+    "min": 0,
+    "max": 40,
+    "unit": "U/L"
+  },
+  "ALP": {
+    "min": 44,
+    "max": 147,
+    "unit": "U/L"
+  },
+  "GGT": {
+    "min": 0,
+    "max": 60,
+    "unit": "U/L"
+  },
+  "LDH": {
+    "min": 140,
+    "max": 280,
+    "unit": "U/L"
+  },
+  "Amylase": {
+    "min": 28,
+    "max": 100,
+    "unit": "U/L"
+  },
+  "Lipase": {
+    "min": 0,
+    "max": 160,
+    "unit": "U/L"
+  },
+  "CPK": {
+    "min": 30,
+    "max": 200,
+    "unit": "U/L"
+  },
+  "CK_MB": {
+    "min": 0,
+    "max": 25,
+    "unit": "U/L"
+  },
+  "Troponin_I": {
+    "min": 0,
+    "max": 0.04,
+    "unit": "ng/mL"
+  },
+  "Troponin_T": {
+    "min": 0,
+    "max": 0.01,
+    "unit": "ng/mL"
+  },
+  "BNP": {
+    "min": 0,
+    "max": 100,
+    "unit": "pg/mL"
+  },
+  "TSH": {
+    "min": 0.4,
+    "max": 4.0,
+    "unit": "mIU/L"
+  },
+  "T3": {
+    "min": 80,
+    "max": 200,
+    "unit": "ng/dL"
+  },
+  "T4": {
+    "min": 5.0,
+    "max": 12.0,
+    "unit": "mcg/dL"
+  },
+  "Free_T3": {
+    "min": 2.3,
+    "max": 4.2,
+    "unit": "pg/mL"
+  },
+  "Free_T4": {
+    "min": 0.8,
+    "max": 1.8,
+    "unit": "ng/dL"
+  },
+  "PSA": {
+    "min": 0,
+    "max": 4.0,
+    "unit": "ng/mL"
+  },
+  "CRP": {
+    "min": 0,
+    "max": 10,
+    "unit": "mg/L"
+  },
+  "hs_CRP": {
+    "min": 0,
+    "max": 3,
+    "unit": "mg/L"
+  },
+  "Procalcitonin": {
+    "min": 0,
+    "max": 0.5,
+    "unit": "ng/mL"
+  },
+  "D_Dimer": {
+    "min": 0,
+    "max": 500,
+    "unit": "ng/mL"
+  },
+  "Fibrinogen": {
+    "min": 200,
+    "max": 400,
+    "unit": "mg/dL"
+  },
+  "PT": {
+    "min": 11,
+    "max": 13.5,
+    "unit": "seconds"
+  },
+  "INR": {
+    "min": 0.8,
+    "max": 1.2,
+    "unit": "ratio"
+  },
+  "APTT": {
+    "min": 25,
+    "max": 35,
+    "unit": "seconds"
+  },
+  "Bleeding_Time": {
+    "min": 1,
+    "max": 6,
+    "unit": "minutes"
+  },
+  "Clotting_Time": {
+    "min": 4,
+    "max": 10,
+    "unit": "minutes"
+  },
+  "Reticulocyte": {
+    "min": 0.5,
+    "max": 2.5,
+    "unit": "%"
+  },
+  "pH": {
+    "min": 7.35,
+    "max": 7.45,
+    "unit": ""
+  },
+  "pCO2": {
+    "min": 35,
+    "max": 45,
+    "unit": "mmHg"
+  },
+  "pO2": {
+    "min": 80,
+    "max": 100,
+    "unit": "mmHg"
+  },
+  "HCO3": {
+    "min": 22,
+    "max": 26,
+    "unit": "mEq/L"
+  },
+  "SpO2": {
+    "min": 95,
+    "max": 100,
+    "unit": "%"
+  },
+  "Lactate": {
+    "min": 0.5,
+    "max": 2.0,
+    "unit": "mmol/L"
+  },
+  "Ammonia": {
+    "min": 15,
+    "max": 45,
+    "unit": "mcg/dL"
+  },
+  "Cortisol": {
+    "min": 6,
+    "max": 23,
+    "unit": "mcg/dL"
+  },
+  "Prolactin": {
+    "min": 2,
+    "max": 18,
+    "unit": "ng/mL"
+  },
+  "FSH": {
+    "min": 1.5,
+    "max": 12.4,
+    "unit": "mIU/mL"
+  },
+  "LH": {
+    "min": 1.7,
+    "max": 8.6,
+    "unit": "mIU/mL"
+  },
+  "Testosterone": {
+    "min": 270,
+    "max": 1070,
+    "unit": "ng/dL"
+  },
+  "Estradiol": {
+    "min": 10,
+    "max": 40,
+    "unit": "pg/mL"
+  },
+  "Progesterone": {
+    "min": 0.1,
+    "max": 0.9,
+    "unit": "ng/mL"
+  },
+  "HCG": {
+    "min": 0,
+    "max": 5,
+    "unit": "mIU/mL"
+  },
+  "AFP": {
+    "min": 0,
+    "max": 10,
+    "unit": "ng/mL"
+  },
+  "CEA": {
+    "min": 0,
+    "max": 5,
+    "unit": "ng/mL"
+  },
+  "CA_125": {
+    "min": 0,
+    "max": 35,
+    "unit": "U/mL"
+  },
+  "CA_19_9": {
+    "min": 0,
+    "max": 37,
+    "unit": "U/mL"
+  },
+  "Urine_pH": {
+    "min": 4.5,
+    "max": 8.0,
+    "unit": ""
+  },
+  "Urine_Specific_Gravity": {
+    "min": 1.005,
+    "max": 1.030,
+    "unit": ""
+  },
+  "Microalbumin": {
+    "min": 0,
+    "max": 30,
+    "unit": "mg/L"
+  },
+  "eGFR": {
+    "min": 90,
+    "max": 120,
+    "unit": "mL/min"
+  }
+}

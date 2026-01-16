@@ -1,0 +1,1 @@
+# Core processing modules for OCR, parsing, validation, and interpretation
