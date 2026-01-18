@@ -62,12 +62,12 @@ class UnitConverter:
             'mg/dL_to_mmol/L': 0.0555,
             'mmol/L_to_mg/dL': 18.018,
             
-            # Cholesterol (Total, HDL, LDL)
-            'mg/dL_to_mmol/L_chol': 0.0259,
+            # Cholesterol (Total, HDL, LDL) - Correct factor: 38.67 mg/dL = 1 mmol/L
+            'mg/dL_to_mmol/L_chol': 0.02586,
             'mmol/L_to_mg/dL_chol': 38.67,
             
-            # Triglycerides
-            'mg/dL_to_mmol/L_tg': 0.0113,
+            # Triglycerides - Correct factor: 88.57 mg/dL = 1 mmol/L
+            'mg/dL_to_mmol/L_tg': 0.01129,
             'mmol/L_to_mg/dL_tg': 88.57,
             
             # Creatinine
