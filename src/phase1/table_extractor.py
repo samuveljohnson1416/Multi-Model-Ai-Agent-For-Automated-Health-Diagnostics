@@ -1,25 +1,19 @@
 import re
 import csv
 import io
+from .phase1_extractor import SHARED_NOISE_PATTERNS
 
 
 class MedicalTableExtractor:
-    """Medical Table Extraction Agent - Faithful extraction only, no interpretation"""
+    """Medical Table Extraction Agent - Faithful extraction only, no interpretation
+    
+    SIMPLIFIED - Uses shared noise patterns from phase1_extractor.py to avoid duplication.
+    Primary extraction path uses phase1_extractor.Phase1MedicalImageExtractor.
+    This class provides alternative table section extraction if needed."""
     
     def __init__(self):
-        # Patterns to identify noise that should be ignored
-        self.noise_patterns = [
-            r'(?i)(?:address|email|phone|tel|fax|mobile)',
-            r'(?i)(?:patient\s+name|patient\s+id|registration)',
-            r'(?i)(?:doctor|dr\.|physician|consultant)',
-            r'(?i)(?:laboratory|lab\s+name|department)',
-            r'(?i)(?:collected|received|reported|printed)',
-            r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}',  # Dates
-            r'\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?',  # Times
-            r'(?i)(?:interpretation|conclusion|comment|note)',
-            r'(?i)(?:signature|authorized|verified)',
-            r'^[A-Z\s]{10,}$',  # All caps headers
-        ]
+        # USE SHARED NOISE PATTERNS from phase1_extractor
+        self.noise_patterns = SHARED_NOISE_PATTERNS
         
         # Patterns to identify test names (anchors for table rows)
         self.test_name_patterns = [
@@ -79,40 +73,10 @@ class MedicalTableExtractor:
         
         return table_lines
     
-    def merge_broken_lines(self, lines):
-        """Merge broken lines that belong to the same test row"""
-        merged_rows = []
-        current_row = ""
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Check if this line starts a new test (has test name pattern)
-            is_new_test = False
-            for pattern in self.test_name_patterns:
-                if re.search(pattern, line):
-                    is_new_test = True
-                    break
-            
-            if is_new_test:
-                # Save previous row if exists
-                if current_row:
-                    merged_rows.append(current_row)
-                current_row = line
-            else:
-                # Continuation of current row
-                if current_row:
-                    current_row += " " + line
-                else:
-                    current_row = line
-        
-        # Add the last row
-        if current_row:
-            merged_rows.append(current_row)
-        
-        return merged_rows
+    def is_status_word(self, word):
+        """Check if word is a status indicator, not a test name"""
+        status_words = ['high', 'low', 'normal', 'abnormal', 'positive', 'negative', 'present', 'absent']
+        return word.lower().strip() in status_words
     
     def extract_method(self, text):
         """Extract method information if present"""
@@ -122,100 +86,28 @@ class MedicalTableExtractor:
                 return match.group(1)
         return ""
     
-    def parse_table_row(self, row_text):
-        """Parse a single table row into structured data"""
-        # Try different parsing patterns
-        patterns = [
-            # Pattern 1: test_name value unit reference_range
-            r'^([A-Za-z][A-Za-z\s\(\)]+?)\s+(\d+\.?\d*)\s+([A-Za-z/%]+)\s+(.+)$',
-            
-            # Pattern 2: test_name value unit
-            r'^([A-Za-z][A-Za-z\s\(\)]+?)\s+(\d+\.?\d*)\s+([A-Za-z/%]+)(?:\s|$)',
-            
-            # Pattern 3: test_name : value unit reference_range
-            r'^([A-Za-z][A-Za-z\s\(\)]+?)\s*:\s*(\d+\.?\d*)\s+([A-Za-z/%]+)\s+(.+)$',
-            
-            # Pattern 4: test_name : value
-            r'^([A-Za-z][A-Za-z\s\(\)]+?)\s*:\s*(\d+\.?\d*)(?:\s|$)',
-            
-            # Pattern 5: test_name text_value
-            r'^([A-Za-z][A-Za-z\s\(\)]+?)\s+([A-Za-z]+)(?:\s|$)',
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, row_text.strip())
-            if match:
-                test_name = match.group(1).strip()
-                value = match.group(2).strip()
-                
-                # Skip if test name is actually a status word
-                if self.is_status_word(test_name):
-                    continue
-                
-                unit = ""
-                reference_range = ""
-                
-                if len(match.groups()) > 2:
-                    unit = match.group(3).strip()
-                
-                if len(match.groups()) > 3:
-                    reference_range = match.group(4).strip()
-                    
-                    # Check if unit is actually part of reference range
-                    if re.match(r'\d+\.?\d*\s*[-–]\s*\d+\.?\d*', unit):
-                        reference_range = unit + " " + reference_range
-                        unit = ""
-                
-                # Extract method
-                method = self.extract_method(row_text)
-                
-                return {
-                    'test_name': test_name,
-                    'value': value,
-                    'unit': unit,
-                    'reference_range': reference_range,
-                    'method': method,
-                    'raw_text': row_text
-                }
-        
-        return None
-    
     def extract_to_csv(self, ocr_text):
-        """Extract table data and return as CSV format"""
-        # Step 1: Extract table section
-        table_lines = self.extract_table_section(ocr_text)
+        """Extract table data and return as CSV format
         
-        # Step 2: Merge broken lines
-        merged_rows = self.merge_broken_lines(table_lines)
+        NOTE: This is a secondary/legacy interface. For new code, use:
+        from .phase1_extractor import Phase1MedicalImageExtractor
+        extractor = Phase1MedicalImageExtractor()
         
-        # Step 3: Parse each row
-        extracted_data = []
-        for row_text in merged_rows:
-            parsed_row = self.parse_table_row(row_text)
-            if parsed_row:
-                extracted_data.append(parsed_row)
+        This method now delegates to phase1_extractor as the primary extraction path.
+        """
+        # Import here to avoid circular imports
+        from .phase1_extractor import Phase1MedicalImageExtractor
         
-        # Step 4: Generate CSV
-        if not extracted_data:
-            # Return empty CSV with headers
-            return "test_name,value,unit,reference_range,method,raw_text\n"
-        
-        # Create CSV string
-        output = io.StringIO()
-        fieldnames = ['test_name', 'value', 'unit', 'reference_range', 'method', 'raw_text']
-        writer = csv.DictWriter(output, fieldnames=fieldnames)
-        
-        writer.writeheader()
-        for row in extracted_data:
-            writer.writerow(row)
-        
-        csv_content = output.getvalue()
-        output.close()
-        
-        return csv_content
+        # Use primary extractor from phase1_extractor
+        primary_extractor = Phase1MedicalImageExtractor()
+        return primary_extractor.extract_to_csv(ocr_text)
 
 
 def extract_medical_table(ocr_text):
-    """Main function to extract medical table from OCR text"""
+    """Main function to extract medical table from OCR text
+    
+    DEPRECATED: Use phase1_extractor.Phase1MedicalImageExtractor instead.
+    This is maintained for backward compatibility only.
+    """
     extractor = MedicalTableExtractor()
     return extractor.extract_to_csv(ocr_text)

@@ -1,6 +1,21 @@
 """
-Unified LLM Provider - Supports both local Ollama and Hugging Face Inference API
-Automatically falls back between providers based on availability and configuration.
+Unified LLM Provider - EXPLANATIONS ONLY
+=========================================
+
+CRITICAL: This provider is used ONLY for generating explanation text.
+NO medical decisions, parameter classifications, or risk scoring is performed by LLMs.
+
+All deterministic medical reasoning happens in:
+- src/core/medical_logic.py (parameter classification, pattern detection, risk scoring)
+- src/phase2/phase2_orchestrator.py (orchestration and decision logic)
+- src/core/interpreter.py (result interpretation and synthesis)
+
+LLM Role: Generate human-readable explanations for already-made rule-based decisions.
+
+Supports:
+- Local Ollama server
+- Hugging Face Inference API
+- Automatic fallback between providers
 """
 
 import os
@@ -25,7 +40,16 @@ class LLMProviderType(Enum):
 
 class LLMProvider:
     """
-    Unified LLM Provider that supports:
+    Unified LLM Provider for EXPLANATIONS ONLY
+    
+    ⚠️ CRITICAL CONSTRAINT:
+    This provider generates explanatory text ONLY.
+    It does NOT perform:
+    - Parameter classification (use medical_logic.py)
+    - Risk scoring (use medical_logic.py)
+    - Medical decision-making (use phase2_orchestrator.py)
+    
+    Supported providers:
     - Local Ollama server
     - Hugging Face Inference API
     - Automatic fallback between providers
@@ -199,8 +223,27 @@ class LLMProvider:
     def generate(self, prompt: str, system_prompt: str = "",
                  temperature: float = 0.1, max_tokens: int = 1000) -> str:
         """
-        Generate text using the best available LLM provider.
-        Automatically falls back to secondary provider if primary fails.
+        Generate EXPLANATION TEXT using the best available LLM provider.
+        
+        ⚠️ CRITICAL: This method is for TEXT GENERATION ONLY.
+        It does NOT make medical decisions.
+        
+        All medical logic is rule-based and deterministic:
+        - Parameter classification: medical_logic.py
+        - Risk scoring: medical_logic.py
+        - Pattern detection: medical_logic.py
+        - Decision synthesis: phase2_orchestrator.py
+        
+        This method only wraps already-made decisions in human-readable text.
+        
+        Args:
+            prompt: Text to generate explanation for (must contain pre-made decision)
+            system_prompt: System context for the LLM
+            temperature: Low (0.1) for consistency, high (0.7+) for creativity
+            max_tokens: Maximum length of generated text
+            
+        Returns:
+            Generated explanation text (NOT a medical decision)
         """
         provider = self.get_active_provider()
         

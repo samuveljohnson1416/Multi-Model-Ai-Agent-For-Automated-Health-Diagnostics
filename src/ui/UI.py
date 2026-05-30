@@ -21,11 +21,22 @@ if _project_root not in sys.path:
 
 from core.ocr_engine import extract_text_from_file
 from core.parser import parse_blood_report
-from core.validator import validate_parameters
-from core.interpreter import interpret_results
+from core.interpreter import (
+    interpret_results, 
+    consolidate_multi_model_results,
+    calculate_severity_metrics,
+    generate_deterministic_recommendations
+)
 from utils.csv_converter import json_to_ml_csv
 from utils.ollama_manager import auto_start_ollama
 from phase2.phase2_integration_safe import integrate_phase2_analysis
+
+# Medical Logic imports (RULE-BASED decisions)
+try:
+    from core.medical_logic import MedicalLogic
+    HAS_MEDICAL_LOGIC = True
+except ImportError:
+    HAS_MEDICAL_LOGIC = False
 
 # OCR and LLM Provider Status imports
 try:
@@ -42,392 +53,99 @@ except ImportError:
 
 # Enhanced AI Agent imports
 from core.enhanced_ai_agent import create_enhanced_ai_agent
-# Advanced Risk Calculator imports
-from core.advanced_risk_calculator import calculate_all_advanced_risks, AdvancedRiskCalculator
 
-# Dynamic Reference Ranges and Unit Converter imports
-from core.dynamic_reference_ranges import validate_parameter_dynamic, get_dynamic_reference, get_all_dynamic_ranges
-from core.unit_converter import convert_to_standard_unit, get_standard_unit
+# Comprehensive Report Generator import
+from core.comprehensive_report_generator import create_comprehensive_report_generator
+
 
 def perform_multi_model_analysis(report_data):
     """
-    Multi-Model AI Analysis Engine
-    Model 1: Rule-based parameter analysis
-    Model 2: Pattern recognition & correlation analysis
-    Model 3: Risk score computation
+    Multi-Model AI Analysis Engine (CONSOLIDATED)
+    Delegates to rule-based medical_logic for all deterministic decisions.
+    
+    Model 1: Rule-based parameter analysis (via medical_logic.classify_parameter)
+    Model 2: Pattern recognition (via medical_logic.get_all_detected_patterns)
+    Model 3: Risk score computation (via medical_logic.calculate_*_risk_score)
     """
     
-    if not report_data:
+    if not report_data or not HAS_MEDICAL_LOGIC:
         return None
     
-    analysis = {
-        'model1_parameter_analysis': {},
-        'model2_pattern_recognition': {},
-        'model3_risk_assessment': {},
-        'correlations': [],
-        'conditions': [],
-        'recommendations': []
+    # Initialize medical logic engine
+    medical_logic = MedicalLogic()
+    
+    # Build parameter dictionary for medical_logic
+    parameters = {}
+    for param_name, param_info in report_data.items():
+        try:
+            value = float(param_info.get('value', 0))
+            parameters[param_name.lower()] = value
+        except (ValueError, TypeError):
+            continue
+    
+    # === MODEL 1: Parameter Interpretation ===
+    model1_result = {}
+    model1_result['total_parameters'] = len(report_data)
+    model1_result['classifications'] = {}
+    
+    abnormal_count = 0
+    normal_count = 0
+    
+    for param_name, param_info in report_data.items():
+        status = param_info.get('status', 'UNKNOWN')
+        if status in ['LOW', 'HIGH']:
+            abnormal_count += 1
+        elif status == 'NORMAL':
+            normal_count += 1
+        
+        model1_result['classifications'][param_name] = {
+            'value': param_info.get('value'),
+            'status': status,
+            'reference_range': param_info.get('reference_range', '')
+        }
+    
+    model1_result['abnormal_parameters'] = abnormal_count
+    model1_result['normal_parameters'] = normal_count
+    model1_result['severity_analysis'] = calculate_severity_metrics(report_data)
+    model1_result['decision_method'] = 'RULE-BASED (medical_logic)'
+    
+    # === MODEL 2: Pattern Recognition ===
+    patterns_detected = medical_logic.get_all_detected_patterns(parameters)
+    
+    model2_result = {
+        'patterns_detected': patterns_detected,
+        'pattern_count': len(patterns_detected),
+        'pattern_names': [p.get('pattern', 'Unknown') for p in patterns_detected],
+        'decision_method': 'RULE-BASED (medical_logic)'
     }
     
-    # Extract values safely
-    def get_value(param_name):
-        for key in report_data:
-            if param_name.lower() in key.lower():
-                try:
-                    return float(report_data[key].get('value', 0))
-                except:
-                    return None
-        return None
+    # === MODEL 3: Risk Score Computation ===
+    overall_health = medical_logic.assess_overall_health_status(parameters)
     
-    def get_status(param_name):
-        for key in report_data:
-            if param_name.lower() in key.lower():
-                return report_data[key].get('status', 'UNKNOWN')
-        return 'UNKNOWN'
+    model3_result = {
+        'overall_risk_level': overall_health.get('overall_risk_level', 'Unknown'),
+        'risk_score': overall_health.get('risk_score', 0.0),
+        'patterns_detected': overall_health.get('patterns_detected', []),
+        'requires_attention': overall_health.get('requires_attention', False),
+        'recommendation': overall_health.get('recommendation', ''),
+        'anemia_risk': medical_logic.calculate_anemia_risk_score(parameters),
+        'infection_risk': medical_logic.calculate_infection_risk_score(parameters),
+        'bleeding_risk': medical_logic.calculate_bleeding_risk_score(parameters),
+        'cardiovascular_risk': medical_logic.calculate_cardiovascular_risk_score(parameters),
+        'renal_risk': medical_logic.calculate_renal_risk_score(parameters),
+        'decision_method': 'RULE-BASED (medical_logic)'
+    }
     
-    # Get key parameters
-    hb = get_value('hemoglobin')
-    rbc = get_value('rbc')
-    wbc = get_value('wbc')
-    platelet = get_value('platelet')
-    mcv = get_value('mcv')
-    mch = get_value('mch')
-    mchc = get_value('mchc')
-    neutrophils = get_value('neutrophil')
-    lymphocytes = get_value('lymphocyte')
+    # === CONSOLIDATED ANALYSIS ===
+    analysis = consolidate_multi_model_results(model1_result, model2_result, model3_result)
     
-    hb_status = get_status('hemoglobin')
-    wbc_status = get_status('wbc')
-    platelet_status = get_status('platelet')
-    
-    # =============================================
-    # MODEL 1: Rule-Based Parameter Analysis
-    # =============================================
-    model1 = analysis['model1_parameter_analysis']
-    
-    abnormal_count = sum(1 for p in report_data.values() if p.get('status') in ['LOW', 'HIGH'])
-    total_count = len(report_data)
-    
-    model1['total_parameters'] = total_count
-    model1['abnormal_parameters'] = abnormal_count
-    model1['normal_percentage'] = round((total_count - abnormal_count) / total_count * 100, 1) if total_count > 0 else 0
-    
-    # Severity scoring for each abnormal parameter
-    severity_scores = []
-    for param, info in report_data.items():
-        if info.get('status') in ['LOW', 'HIGH']:
-            try:
-                value = float(info.get('value', 0))
-                ref_range = info.get('reference_range', '')
-                
-                # Calculate deviation percentage
-                if '-' in str(ref_range):
-                    parts = str(ref_range).split('-')
-                    min_val = float(parts[0].strip())
-                    max_val = float(parts[1].strip())
-                    mid_val = (min_val + max_val) / 2
-                    
-                    if info.get('status') == 'LOW':
-                        deviation = ((min_val - value) / min_val) * 100 if min_val > 0 else 0
-                    else:
-                        deviation = ((value - max_val) / max_val) * 100 if max_val > 0 else 0
-                    
-                    severity = 'Mild' if deviation < 10 else 'Moderate' if deviation < 25 else 'Severe'
-                    severity_scores.append({
-                        'parameter': param,
-                        'status': info.get('status'),
-                        'deviation': round(deviation, 1),
-                        'severity': severity
-                    })
-            except:
-                pass
-    
-    model1['severity_analysis'] = severity_scores
-    
-    # =============================================
-    # MODEL 2: Pattern Recognition & Correlation
-    # =============================================
-    model2 = analysis['model2_pattern_recognition']
-    correlations = analysis['correlations']
-    conditions = analysis['conditions']
-    
-    # Pattern 1: Anemia Detection (Hb + RBC + MCV + MCH correlation)
-    if hb and hb_status == 'LOW':
-        anemia_pattern = {
-            'pattern': 'Anemia Pattern Detected',
-            'parameters_involved': ['Hemoglobin', 'RBC', 'MCV', 'MCH'],
-            'findings': []
-        }
-        
-        if mcv:
-            if mcv < 80:
-                anemia_pattern['type'] = 'Microcytic Anemia'
-                anemia_pattern['findings'].append(f'Low MCV ({mcv} fL) suggests iron deficiency or thalassemia')
-                conditions.append({
-                    'condition': 'Microcytic Anemia',
-                    'likelihood': 'High' if hb < 10 else 'Moderate',
-                    'evidence': f'Hb: {hb} g/dL, MCV: {mcv} fL'
-                })
-            elif mcv > 100:
-                anemia_pattern['type'] = 'Macrocytic Anemia'
-                anemia_pattern['findings'].append(f'High MCV ({mcv} fL) suggests B12/Folate deficiency')
-                conditions.append({
-                    'condition': 'Macrocytic Anemia (B12/Folate Deficiency)',
-                    'likelihood': 'High' if hb < 10 else 'Moderate',
-                    'evidence': f'Hb: {hb} g/dL, MCV: {mcv} fL'
-                })
-            else:
-                anemia_pattern['type'] = 'Normocytic Anemia'
-                anemia_pattern['findings'].append('Normal MCV suggests chronic disease or acute blood loss')
-        
-        correlations.append(anemia_pattern)
-    
-    # Pattern 2: Infection/Inflammation (WBC + Neutrophils + Lymphocytes)
-    if wbc:
-        infection_pattern = {
-            'pattern': 'Infection/Inflammation Analysis',
-            'parameters_involved': ['WBC', 'Neutrophils', 'Lymphocytes'],
-            'findings': []
-        }
-        
-        if wbc_status == 'HIGH':
-            infection_pattern['findings'].append(f'Elevated WBC ({wbc}) indicates active immune response')
-            
-            if neutrophils and neutrophils > 70:
-                infection_pattern['findings'].append(f'High Neutrophils ({neutrophils}%) suggests bacterial infection')
-                conditions.append({
-                    'condition': 'Bacterial Infection',
-                    'likelihood': 'High',
-                    'evidence': f'WBC: {wbc}, Neutrophils: {neutrophils}%'
-                })
-            elif lymphocytes and lymphocytes > 40:
-                infection_pattern['findings'].append(f'High Lymphocytes ({lymphocytes}%) suggests viral infection')
-                conditions.append({
-                    'condition': 'Viral Infection',
-                    'likelihood': 'Moderate',
-                    'evidence': f'WBC: {wbc}, Lymphocytes: {lymphocytes}%'
-                })
-        
-        elif wbc_status == 'LOW':
-            infection_pattern['findings'].append(f'Low WBC ({wbc}) indicates immunosuppression')
-            conditions.append({
-                'condition': 'Immunodeficiency Risk',
-                'likelihood': 'Moderate',
-                'evidence': f'WBC: {wbc}'
-            })
-        
-        if infection_pattern['findings']:
-            correlations.append(infection_pattern)
-    
-    # Pattern 3: Bleeding Risk (Platelet + Hb correlation)
-    if platelet:
-        bleeding_pattern = {
-            'pattern': 'Bleeding Risk Assessment',
-            'parameters_involved': ['Platelet', 'Hemoglobin'],
-            'findings': []
-        }
-        
-        if platelet_status == 'LOW':
-            bleeding_pattern['findings'].append(f'Low Platelets ({platelet}) increases bleeding risk')
-            
-            if platelet < 50000:
-                bleeding_pattern['severity'] = 'Severe'
-                conditions.append({
-                    'condition': 'Severe Thrombocytopenia',
-                    'likelihood': 'High',
-                    'evidence': f'Platelet: {platelet}'
-                })
-            elif platelet < 100000:
-                bleeding_pattern['severity'] = 'Moderate'
-                conditions.append({
-                    'condition': 'Moderate Thrombocytopenia',
-                    'likelihood': 'High',
-                    'evidence': f'Platelet: {platelet}'
-                })
-            
-            if hb_status == 'LOW':
-                bleeding_pattern['findings'].append('Combined low Hb + Platelets suggests active bleeding or bone marrow issue')
-                conditions.append({
-                    'condition': 'Pancytopenia Risk',
-                    'likelihood': 'Moderate',
-                    'evidence': f'Hb: {hb}, Platelet: {platelet}'
-                })
-        
-        if bleeding_pattern['findings']:
-            correlations.append(bleeding_pattern)
-    
-    # Pattern 4: Pancytopenia (All cell lines low)
-    if hb_status == 'LOW' and wbc_status == 'LOW' and platelet_status == 'LOW':
-        conditions.append({
-            'condition': 'Pancytopenia',
-            'likelihood': 'High',
-            'evidence': f'All cell lines reduced - Hb: {hb}, WBC: {wbc}, Platelet: {platelet}'
-        })
-        correlations.append({
-            'pattern': 'Pancytopenia Pattern',
-            'parameters_involved': ['Hemoglobin', 'WBC', 'Platelet'],
-            'findings': ['All three cell lines are reduced', 'Suggests bone marrow dysfunction or severe infection'],
-            'severity': 'Severe'
-        })
-    
-    model2['patterns_detected'] = len(correlations)
-    model2['conditions_identified'] = len(conditions)
-    
-    # =============================================
-    # MODEL 3: Risk Score Computation
-    # =============================================
-    model3 = analysis['model3_risk_assessment']
-    
-    # Calculate individual risk scores
-    anemia_risk = 0
-    infection_risk = 0
-    bleeding_risk = 0
-    cardiovascular_risk = 0
-    
-    # Anemia Risk Score (0-100)
-    if hb:
-        if hb < 7:
-            anemia_risk = 100
-        elif hb < 10:
-            anemia_risk = 70
-        elif hb < 12:
-            anemia_risk = 40
-        else:
-            anemia_risk = 10
-    
-    # Infection Risk Score (0-100)
-    if wbc:
-        if wbc < 2000:
-            infection_risk = 90
-        elif wbc < 4000:
-            infection_risk = 60
-        elif wbc > 15000:
-            infection_risk = 50
-        elif wbc > 11000:
-            infection_risk = 30
-        else:
-            infection_risk = 10
-    
-    # Bleeding Risk Score (0-100)
-    if platelet:
-        if platelet < 20000:
-            bleeding_risk = 100
-        elif platelet < 50000:
-            bleeding_risk = 80
-        elif platelet < 100000:
-            bleeding_risk = 50
-        elif platelet < 150000:
-            bleeding_risk = 30
-        else:
-            bleeding_risk = 10
-    
-    # Overall Health Score
-    overall_score = 100 - (anemia_risk * 0.3 + infection_risk * 0.3 + bleeding_risk * 0.4)
-    overall_score = max(0, min(100, overall_score))
-    
-    model3['anemia_risk'] = {'score': anemia_risk, 'level': 'High' if anemia_risk > 60 else 'Moderate' if anemia_risk > 30 else 'Low'}
-    model3['infection_risk'] = {'score': infection_risk, 'level': 'High' if infection_risk > 60 else 'Moderate' if infection_risk > 30 else 'Low'}
-    model3['bleeding_risk'] = {'score': bleeding_risk, 'level': 'High' if bleeding_risk > 60 else 'Moderate' if bleeding_risk > 30 else 'Low'}
-    model3['overall_health_score'] = round(overall_score, 1)
-    model3['overall_status'] = 'Good' if overall_score > 70 else 'Fair' if overall_score > 40 else 'Needs Attention'
-    
-    # =============================================
-    # Generate Recommendations WITH TRACEABILITY
-    # =============================================
-    recommendations = analysis['recommendations']
-    
-    if anemia_risk > 30:
-        # Build traceability chain
-        finding = f"Hemoglobin: {hb} g/dL" if hb else "Low hemoglobin detected"
-        risk_explanation = f"Anemia Risk Score: {anemia_risk}/100 ({'Severe' if anemia_risk > 70 else 'Moderate' if anemia_risk > 40 else 'Mild'})"
-        
-        recommendations.append({
-            'category': 'Anemia Management',
-            'priority': 'High' if anemia_risk > 60 else 'Medium',
-            'traceability': {
-                'finding': finding,
-                'risk': risk_explanation,
-                'reasoning': f"Because hemoglobin is low ({hb} g/dL) → reduced oxygen-carrying capacity → fatigue, weakness, organ strain"
-            },
-            'actions': [
-                'Increase iron-rich foods (spinach, red meat, legumes)',
-                'Take Vitamin C with iron for better absorption',
-                'Consider iron/B12 supplements after consulting doctor'
-            ]
-        })
-    
-    if infection_risk > 30:
-        finding = f"WBC: {wbc}/cumm" if wbc else "Abnormal WBC detected"
-        if wbc and wbc < 4000:
-            risk_explanation = f"Infection Risk Score: {infection_risk}/100 - Low WBC means weakened immunity"
-            reasoning = f"Because WBC count is low ({wbc}/cumm) → reduced immune defense → higher infection susceptibility"
-        else:
-            risk_explanation = f"Infection Risk Score: {infection_risk}/100 - Elevated WBC indicates active infection"
-            reasoning = f"Because WBC count is elevated ({wbc}/cumm) → active immune response → possible ongoing infection"
-        
-        recommendations.append({
-            'category': 'Immune Support',
-            'priority': 'High' if infection_risk > 60 else 'Medium',
-            'traceability': {
-                'finding': finding,
-                'risk': risk_explanation,
-                'reasoning': reasoning
-            },
-            'actions': [
-                'Boost immunity with Vitamin C and Zinc',
-                'Maintain good hygiene to prevent infections',
-                'Get adequate rest and sleep'
-            ]
-        })
-    
-    if bleeding_risk > 30:
-        finding = f"Platelet Count: {platelet}/cumm" if platelet else "Low platelets detected"
-        severity = 'Severe' if platelet and platelet < 50000 else 'Moderate' if platelet and platelet < 100000 else 'Mild'
-        risk_explanation = f"Bleeding Risk Score: {bleeding_risk}/100 ({severity} thrombocytopenia)"
-        
-        recommendations.append({
-            'category': 'Bleeding Precautions',
-            'priority': 'High' if bleeding_risk > 60 else 'Medium',
-            'traceability': {
-                'finding': finding,
-                'risk': risk_explanation,
-                'reasoning': f"Because platelet count is low ({platelet}/cumm) → impaired blood clotting → increased bleeding risk"
-            },
-            'actions': [
-                'Avoid injury and contact sports',
-                'Use soft toothbrush to prevent gum bleeding',
-                'Consult hematologist if platelets very low',
-                'Watch for unusual bruising or bleeding'
-            ]
-        })
-    
-    # Add combined risk recommendation if multiple risks
-    high_risks = []
-    if anemia_risk > 50:
-        high_risks.append(('Anemia', hb, 'g/dL'))
-    if infection_risk > 50:
-        high_risks.append(('Infection', wbc, '/cumm'))
-    if bleeding_risk > 50:
-        high_risks.append(('Bleeding', platelet, '/cumm'))
-    
-    if len(high_risks) >= 2:
-        findings = [f"{r[0]}: {r[1]}{r[2]}" for r in high_risks]
-        recommendations.append({
-            'category': 'Combined Risk Alert',
-            'priority': 'High',
-            'traceability': {
-                'finding': ' + '.join(findings),
-                'risk': 'Multiple elevated risk scores detected',
-                'reasoning': f"Because multiple parameters are abnormal → compounded health risk → urgent medical attention needed"
-            },
-            'actions': [
-                'Seek immediate medical consultation',
-                'Complete blood count retest recommended',
-                'Bone marrow evaluation may be needed'
-            ]
-        })
+    # === GENERATE RECOMMENDATIONS ===
+    recommendations = generate_deterministic_recommendations(analysis)
+    analysis['recommendations'] = recommendations
     
     return analysis
+
+
 
 
 def perform_contextual_analysis(report_data, user_context):
@@ -796,436 +514,6 @@ def perform_contextual_analysis(report_data, user_context):
     return analysis
 
 
-def generate_personalized_response(question, report_data, user_context=None):
-    """
-    Generate personalized response with EXPLICIT INTENT INFERENCE.
-    Shows WHY the AI interpreted the question a certain way.
-    Now includes user context (age, gender, history, lifestyle) for personalization.
-    """
-    if not report_data:
-        return "Please upload a blood report first so I can provide personalized recommendations."
-    
-    # Get user context from session state if not provided
-    if user_context is None:
-        user_context = {
-            'age': st.session_state.get('user_age'),
-            'gender': st.session_state.get('user_gender'),
-            'medical_history': st.session_state.get('medical_history', []),
-            'lifestyle': st.session_state.get('lifestyle_factors', {})
-        }
-    
-    # Analyze the report data
-    abnormal_params = []
-    low_params = []
-    high_params = []
-    normal_params = []
-    
-    for param, info in report_data.items():
-        status = info.get('status', 'UNKNOWN')
-        if status == 'LOW':
-            low_params.append((param, info))
-            abnormal_params.append((param, info, 'LOW'))
-        elif status == 'HIGH':
-            high_params.append((param, info))
-            abnormal_params.append((param, info, 'HIGH'))
-        elif status == 'NORMAL':
-            normal_params.append((param, info))
-    
-    # =============================================
-    # INTENT INFERENCE ENGINE
-    # =============================================
-    def infer_intent(q):
-        """Infer user's TRUE GOAL from their question"""
-        q_lower = q.lower()
-        
-        # Check for specific parameter mentions first
-        mentioned_param = None
-        for param in report_data.keys():
-            if param.lower() in q_lower:
-                mentioned_param = param
-                break
-        
-        # Intent detection with reasoning
-        if any(word in q_lower for word in ['food', 'diet', 'eat', 'nutrition', 'meal']):
-            if abnormal_params:
-                primary = abnormal_params[0][0]
-                return {
-                    'intent': 'dietary_advice',
-                    'confidence': 95,
-                    'user_query': q,
-                    'interpretation': f'seeking dietary recommendations to address abnormal {primary} levels',
-                    'related_params': [p[0] for p in abnormal_params]
-                }
-            return {
-                'intent': 'dietary_advice',
-                'confidence': 90,
-                'user_query': q,
-                'interpretation': 'seeking general dietary guidance for maintaining good health',
-                'related_params': []
-            }
-        
-        elif any(word in q_lower for word in ['disease', 'risk', 'future', 'chance', 'develop', 'prevent']):
-            if abnormal_params:
-                concerns = [p[0] for p in abnormal_params]
-                return {
-                    'intent': 'risk_assessment',
-                    'confidence': 88,
-                    'user_query': q,
-                    'interpretation': f'concerned about long-term health risks related to {", ".join(concerns[:2])} levels',
-                    'related_params': concerns
-                }
-            return {
-                'intent': 'risk_assessment',
-                'confidence': 80,
-                'user_query': q,
-                'interpretation': 'seeking preventive health information despite normal values',
-                'related_params': []
-            }
-        
-        elif any(word in q_lower for word in ['exercise', 'workout', 'fitness', 'gym', 'yoga']):
-            if any('Hemoglobin' in p for p, _, _ in abnormal_params):
-                return {
-                    'intent': 'exercise_advice',
-                    'confidence': 92,
-                    'user_query': q,
-                    'interpretation': 'seeking safe exercise guidance considering low hemoglobin (anemia)',
-                    'related_params': ['Hemoglobin']
-                }
-            return {
-                'intent': 'exercise_advice',
-                'confidence': 88,
-                'user_query': q,
-                'interpretation': 'seeking exercise recommendations based on current health status',
-                'related_params': []
-            }
-        
-        elif any(word in q_lower for word in ['improve', 'increase', 'boost', 'raise', 'fix', 'better']):
-            if abnormal_params:
-                return {
-                    'intent': 'improvement_advice',
-                    'confidence': 90,
-                    'user_query': q,
-                    'interpretation': f'seeking actionable steps to improve {abnormal_params[0][0]} which is {abnormal_params[0][2]}',
-                    'related_params': [p[0] for p in abnormal_params]
-                }
-            return {
-                'intent': 'improvement_advice',
-                'confidence': 75,
-                'user_query': q,
-                'interpretation': 'seeking ways to optimize already normal health parameters',
-                'related_params': []
-            }
-        
-        elif any(word in q_lower for word in ['why', 'cause', 'reason']):
-            if abnormal_params:
-                return {
-                    'intent': 'cause_explanation',
-                    'confidence': 85,
-                    'user_query': q,
-                    'interpretation': f'seeking to understand why {abnormal_params[0][0]} is {abnormal_params[0][2]}',
-                    'related_params': [p[0] for p in abnormal_params]
-                }
-            return {
-                'intent': 'cause_explanation',
-                'confidence': 70,
-                'user_query': q,
-                'interpretation': 'seeking general health information',
-                'related_params': []
-            }
-        
-        elif any(word in q_lower for word in ['summary', 'overview', 'results', 'report', 'tell me']):
-            return {
-                'intent': 'report_summary',
-                'confidence': 95,
-                'user_query': q,
-                'interpretation': 'requesting comprehensive overview of blood report findings',
-                'related_params': list(report_data.keys())
-            }
-        
-        elif mentioned_param:
-            info = report_data[mentioned_param]
-            return {
-                'intent': 'parameter_query',
-                'confidence': 95,
-                'user_query': q,
-                'interpretation': f'seeking detailed information about {mentioned_param} (currently {info.get("status", "UNKNOWN")})',
-                'related_params': [mentioned_param]
-            }
-        
-        # Default - vague query
-        if abnormal_params:
-            return {
-                'intent': 'general_query',
-                'confidence': 60,
-                'user_query': q,
-                'interpretation': f'vague query - interpreting as general concern about health, particularly {abnormal_params[0][0]} which needs attention',
-                'related_params': [p[0] for p in abnormal_params]
-            }
-        return {
-            'intent': 'general_query',
-            'confidence': 50,
-            'user_query': q,
-            'interpretation': 'general health inquiry - all parameters are normal',
-            'related_params': []
-        }
-    
-    # Get intent
-    intent = infer_intent(question)
-    
-    # Build response with EXPLICIT intent inference display
-    response = "🎯 **Intent Inference:**\n"
-    response += f"> *\"{intent['user_query']}\"*\n\n"
-    response += f"📌 **I interpret this as:** {intent['interpretation']}\n"
-    response += f"🔍 **Confidence:** {intent['confidence']}%\n"
-    if intent['related_params']:
-        response += f"🔗 **Related Parameters:** {', '.join(intent['related_params'][:3])}\n"
-    
-    # Add context awareness to response
-    has_context = user_context.get('age') or user_context.get('gender') or user_context.get('medical_history') or any(user_context.get('lifestyle', {}).values())
-    if has_context:
-        response += "\n🧑 **Your Profile Considered:**"
-        if user_context.get('age'):
-            response += f" Age {user_context['age']}"
-        if user_context.get('gender'):
-            response += f", {user_context['gender']}"
-        if user_context.get('medical_history'):
-            response += f", History: {', '.join(user_context['medical_history'][:2])}"
-        response += "\n"
-    
-    response += "\n---\n\n"
-    
-    # =============================================
-    # GENERATE RESPONSE BASED ON INTENT
-    # =============================================
-    
-    # Context-aware modifiers
-    age = user_context.get('age')
-    gender = user_context.get('gender')
-    history = user_context.get('medical_history', [])
-    lifestyle = user_context.get('lifestyle', {})
-    
-    if intent['intent'] == 'dietary_advice':
-        response += "🍎 **Personalized Diet Recommendations:**\n\n"
-        
-        # Add context-specific dietary notes
-        if 'Diabetes' in history:
-            response += "⚠️ *Note: Diabetic diet considerations applied*\n\n"
-        if lifestyle.get('diet') == 'Vegetarian':
-            response += "🥗 *Vegetarian alternatives included*\n\n"
-        
-        if not abnormal_params:
-            response += "✅ All parameters normal! Maintain with:\n"
-            response += "• Balanced diet with fruits, vegetables, whole grains\n"
-            response += "• 8+ glasses of water daily\n"
-            response += "• Limit processed foods and sugar\n"
-            
-            # Age-specific advice
-            if age and age >= 50:
-                response += "\n*For your age group:*\n"
-                response += "• Increase calcium and Vitamin D\n"
-                response += "• Focus on heart-healthy foods\n"
-        else:
-            for param, info, status in abnormal_params:
-                val = info.get('value', '')
-                if 'Hemoglobin' in param and status == 'LOW':
-                    response += f"🔻 **For Low Hemoglobin ({val} g/dL):**\n"
-                    if lifestyle.get('diet') == 'Vegetarian':
-                        response += "• Plant iron: spinach, lentils, fortified cereals\n"
-                        response += "• Vitamin C with iron for better absorption\n"
-                        response += "• Consider B12 supplements (vegetarian diet)\n\n"
-                    else:
-                        response += "• Iron-rich: spinach, red meat, lentils\n"
-                        response += "• Vitamin C with iron for absorption\n"
-                        response += "• Avoid tea/coffee with meals\n\n"
-                elif 'Platelet' in param and status == 'LOW':
-                    response += f"🔻 **For Low Platelets ({val}):**\n"
-                    response += "• Papaya and papaya leaf juice\n"
-                    response += "• Pomegranate, beetroot, pumpkin\n"
-                    response += "• Avoid alcohol completely\n\n"
-                elif 'Glucose' in param and status == 'HIGH':
-                    response += f"🔺 **For High Glucose ({val} mg/dL):**\n"
-                    response += "• Avoid sugar and refined carbs\n"
-                    response += "• Choose whole grains, vegetables\n"
-                    response += "• Small, frequent meals\n"
-                    if 'Diabetes' in history:
-                        response += "• *Given your diabetes history: strict carb counting recommended*\n\n"
-                    else:
-                        response += "\n"
-                elif 'Cholesterol' in param and status == 'HIGH':
-                    response += f"🔺 **For High Cholesterol ({val} mg/dL):**\n"
-                    response += "• Reduce saturated fats\n"
-                    response += "• Omega-3 fish, nuts, olive oil\n"
-                    response += "• More fiber (oats, beans)\n"
-                    if 'Heart Disease' in history:
-                        response += "• *Given your heart history: strict lipid control essential*\n\n"
-                    else:
-                        response += "\n"
-                elif 'WBC' in param and status == 'LOW':
-                    response += f"🔻 **For Low WBC ({val}):**\n"
-                    response += "• Vitamin C (citrus fruits)\n"
-                    response += "• Garlic, ginger, turmeric\n"
-                    response += "• Probiotics (yogurt)\n\n"
-    
-    elif intent['intent'] == 'risk_assessment':
-        response += "⚠️ **Future Health Risk Assessment:**\n\n"
-        
-        # Add context-based risk modifiers
-        risk_modifier = ""
-        if age and age >= 50:
-            risk_modifier += f"*Age {age}: Higher baseline risk for chronic conditions*\n"
-        if 'Diabetes' in history:
-            risk_modifier += "*Diabetes history: Elevated metabolic risk*\n"
-        if 'Heart Disease' in history:
-            risk_modifier += "*Heart disease history: Elevated cardiovascular risk*\n"
-        if lifestyle.get('smoker'):
-            risk_modifier += "*Smoker: Significantly elevated health risks*\n"
-        if risk_modifier:
-            response += f"📊 **Your Risk Profile:**\n{risk_modifier}\n"
-        
-        if not abnormal_params:
-            response += "✅ **Low Risk** - All parameters normal!\n"
-            response += "Continue healthy lifestyle for prevention.\n"
-            if history:
-                response += f"\n*Given your history ({', '.join(history[:2])}), regular monitoring recommended.*\n"
-        else:
-            for param, info, status in abnormal_params:
-                val = info.get('value', '')
-                if 'Hemoglobin' in param and status == 'LOW':
-                    response += f"🔻 **Low Hemoglobin ({val})** → Risks:\n"
-                    response += "• Chronic fatigue, weakness\n"
-                    response += "• Heart strain over time\n"
-                    response += "• Cognitive issues if prolonged\n"
-                    if gender and gender.lower() == 'female' and age and age < 50:
-                        response += "• *For women: Check for menstrual-related iron loss*\n"
-                    response += "• *Action: Iron supplementation, treat cause*\n\n"
-                elif 'Platelet' in param and status == 'LOW':
-                    response += f"🔻 **Low Platelets ({val})** → Risks:\n"
-                    response += "• Bleeding tendency\n"
-                    response += "• Easy bruising\n"
-                    response += "• Internal bleeding if severe\n"
-                    response += "• *Action: Avoid injury, see hematologist*\n\n"
-                elif 'Glucose' in param and status == 'HIGH':
-                    response += f"🔺 **High Glucose ({val})** → Risks:\n"
-                    response += "• Type 2 Diabetes\n"
-                    response += "• Heart disease, stroke\n"
-                    response += "• Kidney/nerve damage\n"
-                    if 'Diabetes' in history:
-                        response += "• *⚠️ Given your diabetes history: Urgent attention needed*\n"
-                    response += "• *Action: Diet control, exercise*\n\n"
-                elif 'WBC' in param and status == 'LOW':
-                    response += f"🔻 **Low WBC ({val})** → Risks:\n"
-                    response += "• Infection susceptibility\n"
-                    response += "• Slower recovery\n"
-                    response += "• *Action: Boost immunity, avoid sick contacts*\n\n"
-    
-    elif intent['intent'] == 'exercise_advice':
-        response += "🏃 **Exercise Recommendations:**\n\n"
-        has_anemia = any('Hemoglobin' in p and s == 'LOW' for p, _, s in abnormal_params)
-        has_low_plt = any('Platelet' in p and s == 'LOW' for p, _, s in abnormal_params)
-        
-        # Add age-specific exercise notes
-        if age:
-            if age >= 60:
-                response += f"*For age {age}: Low-impact exercises recommended*\n\n"
-            elif age >= 40:
-                response += f"*For age {age}: Include cardiovascular health focus*\n\n"
-        
-        if 'Heart Disease' in history:
-            response += "⚠️ **Heart Disease History - Exercise with caution:**\n"
-            response += "• Get cardiac clearance before starting\n"
-            response += "• Monitor heart rate during exercise\n"
-            response += "• Avoid sudden intense activity\n\n"
-        elif has_anemia:
-            response += "⚠️ **Caution - Low Hemoglobin:**\n"
-            response += "• Light walking only (15-20 mins)\n"
-            response += "• Gentle yoga, no intense cardio\n"
-            response += "• Stop if dizzy or breathless\n"
-        elif has_low_plt:
-            response += "⚠️ **Caution - Low Platelets:**\n"
-            response += "• Avoid contact sports\n"
-            response += "• No heavy weights\n"
-            response += "• Swimming, walking are safe\n"
-        else:
-            response += "✅ Safe for regular exercise:\n"
-            response += "• 150 mins cardio/week\n"
-            response += "• Strength training 2-3x/week\n"
-            response += "• Include stretching\n"
-            if lifestyle.get('exercise') == 'Sedentary':
-                response += "\n*Since you're currently sedentary, start gradually!*\n"
-    
-    elif intent['intent'] == 'improvement_advice':
-        response += "📈 **How to Improve Your Values:**\n\n"
-        if not abnormal_params:
-            response += "✅ All normal! Maintain with healthy lifestyle.\n"
-        else:
-            for param, info, status in abnormal_params:
-                response += f"**{param}** ({info.get('value')} - {status}):\n"
-                if 'Hemoglobin' in param:
-                    response += "• Iron-rich foods + Vitamin C\n"
-                    response += "• Consider supplements\n"
-                    response += "• Improvement in 2-4 weeks\n"
-                    if lifestyle.get('diet') == 'Vegetarian':
-                        response += "• *Vegetarian tip: Fortified cereals, legumes, dark leafy greens*\n"
-                    response += "\n"
-                elif 'Platelet' in param:
-                    response += "• Papaya leaf juice\n"
-                    response += "• No alcohol, rest well\n"
-                    response += "• May need medical treatment\n\n"
-    
-    elif intent['intent'] == 'cause_explanation':
-        response += "🔍 **Possible Causes:**\n\n"
-        for param, info, status in abnormal_params:
-            response += f"**{param}** ({status}):\n"
-            if 'Hemoglobin' in param:
-                response += "• Iron/B12/folate deficiency\n"
-                response += "• Chronic blood loss\n"
-                response += "• Bone marrow issues\n\n"
-            elif 'Platelet' in param and status == 'LOW':
-                response += "• Viral infections (dengue)\n"
-                response += "• Autoimmune conditions\n"
-                response += "• Medications, liver disease\n\n"
-            elif 'WBC' in param:
-                response += "• Infections\n"
-                response += "• Bone marrow problems\n"
-                response += "• Autoimmune conditions\n\n"
-    
-    elif intent['intent'] == 'report_summary':
-        response += "📊 **Report Summary:**\n\n"
-        response += f"• Total: {len(report_data)} parameters\n"
-        response += f"• ✅ Normal: {len(normal_params)}\n"
-        response += f"• 🔻 Low: {len(low_params)}\n"
-        response += f"• 🔺 High: {len(high_params)}\n\n"
-        if abnormal_params:
-            response += "**Attention Needed:**\n"
-            for p, i, s in abnormal_params:
-                e = "🔻" if s == "LOW" else "🔺"
-                response += f"{e} {p}: {i.get('value')} {i.get('unit','')} ({s})\n"
-    
-    elif intent['intent'] == 'parameter_query':
-        param = intent['related_params'][0] if intent['related_params'] else None
-        if param and param in report_data:
-            info = report_data[param]
-            status = info.get('status', 'UNKNOWN')
-            emoji = "✅" if status == "NORMAL" else "🔻" if status == "LOW" else "🔺"
-            response += f"**{param} Details:**\n\n"
-            response += f"• Value: {info.get('value')} {info.get('unit', '')}\n"
-            response += f"• Reference: {info.get('reference_range', 'N/A')}\n"
-            response += f"• Status: {emoji} {status}\n"
-    
-    else:  # general_query
-        response += "📋 **Your Report Overview:**\n\n"
-        if abnormal_params:
-            response += "**Key Findings:**\n"
-            for p, i, s in abnormal_params[:3]:
-                e = "🔻" if s == "LOW" else "🔺"
-                response += f"{e} {p}: {i.get('value')} ({s})\n"
-            response += "\nAsk about: diet, risks, exercise, or specific parameters"
-        else:
-            response += "✅ All parameters normal!\n"
-            response += "Ask about diet, exercise, or lifestyle tips."
-    
-    response += "\n\n⚠️ *Consult your doctor for medical advice.*"
-    return response
 
 
 def extract_age_gender_from_text(raw_text):
@@ -1241,39 +529,53 @@ def extract_age_gender_from_text(raw_text):
     
     text_lower = raw_text.lower()
     
+    # Debug: Print first 200 characters of text being processed
+    print(f"[DEBUG] Processing text: {text_lower[:200]}...")
+    
     # =============================================
     # AGE EXTRACTION PATTERNS
     # =============================================
     age_patterns = [
+        # "Age/Sex: 45 Years / Male" - handle the specific format from your report
+        r'age[/\s]*sex[:\s]*(\d{1,3})\s*years?\s*[/\s]*(?:male|female|m|f)',
         # "Age: 45 years" or "Age: 45 yrs" or "Age: 45"
         r'age[:\s]+(\d{1,3})\s*(?:years?|yrs?|y)?',
         # "45 years old" or "45 yrs old"
         r'(\d{1,3})\s*(?:years?|yrs?)\s*old',
         # "Age/Sex: 45/M" or "Age/Gender: 45/F"
         r'age[/\s]*(?:sex|gender)[:\s]*(\d{1,3})[/\s]*[mf]',
-        # "45 Y" or "45Y"
+        # "45 Y" or "45Y" or "45 Years"
         r'(\d{1,3})\s*y(?:ears?|rs?)?\b',
-        # "DOB" based calculation would need date parsing - skip for now
         # "Patient Age: 45"
         r'patient\s*age[:\s]+(\d{1,3})',
     ]
     
-    for pattern in age_patterns:
+    for i, pattern in enumerate(age_patterns):
         match = re.search(pattern, text_lower)
         if match:
             try:
                 extracted_age = int(match.group(1))
+                print(f"[DEBUG] Pattern {i+1} matched: '{match.group(0)}' -> age: {extracted_age}")
                 # Validate age is reasonable (1-120)
                 if 1 <= extracted_age <= 120:
                     age = extracted_age
+                    print(f"[DEBUG] Age accepted: {age}")
                     break
-            except:
+                else:
+                    print(f"[DEBUG] Age rejected (out of range): {extracted_age}")
+            except Exception as e:
+                print(f"[DEBUG] Error parsing age: {e}")
                 continue
+    
+    if age is None:
+        print("[DEBUG] No valid age found")
     
     # =============================================
     # GENDER EXTRACTION PATTERNS
     # =============================================
     gender_patterns = [
+        # "Age/Sex: 45 Years / Male" - handle the specific format from your report
+        r'age[/\s]*sex[:\s]*\d+\s*years?\s*[/\s]*(male|female|m|f)\b',
         # "Sex: Male" or "Sex: Female" or "Sex: M" or "Sex: F"
         r'sex[:\s]+(male|female|m|f)\b',
         # "Gender: Male" or "Gender: Female"
@@ -1288,17 +590,24 @@ def extract_age_gender_from_text(raw_text):
         r'\b(male|female)\b',
     ]
     
-    for pattern in gender_patterns:
+    for i, pattern in enumerate(gender_patterns):
         match = re.search(pattern, text_lower)
         if match:
             gender_str = match.group(1).lower()
+            print(f"[DEBUG] Gender pattern {i+1} matched: '{match.group(0)}' -> gender: {gender_str}")
             if gender_str in ['m', 'male']:
                 gender = 'Male'
+                print(f"[DEBUG] Gender accepted: {gender}")
                 break
             elif gender_str in ['f', 'female']:
                 gender = 'Female'
+                print(f"[DEBUG] Gender accepted: {gender}")
                 break
     
+    if gender is None:
+        print("[DEBUG] No valid gender found")
+    
+    print(f"[DEBUG] Final result: age={age}, gender={gender}")
     return age, gender
 
 
@@ -1815,7 +1124,7 @@ with st.sidebar:
 # Initialize AI Agent
 if not st.session_state.enhanced_ai_agent:
     st.session_state.enhanced_ai_agent = create_enhanced_ai_agent()
-    st.session_state.ai_session_id = st.session_state.enhanced_ai_agent.start_user_session(session_type="analysis")
+    st.session_state.ai_session_id = f"session_{id(st.session_state.enhanced_ai_agent)}"
 
 # Status indicators
 col1, col2, col3, col4 = st.columns(4)
@@ -1867,17 +1176,29 @@ uploaded_file = st.file_uploader(
 if uploaded_file is not None:
     st.success(f"📄 Processing: {uploaded_file.name}")
     
-    with st.spinner("🔍 Analyzing your medical report..."):
+    with st.spinner("🔍 Analyzing your medical report (this may take 30-60 seconds)..."):
         try:
+            # Progress tracking
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            status_text.text("📝 Extracting text from file...")
+            progress_bar.progress(20)
+            
             # Extract data from file
             ingestion_result = extract_text_from_file(uploaded_file)
+            progress_bar.progress(50)
+            status_text.text("✓ Text extracted. Parsing results...")
             
             # Parse result
             try:
                 result_data = json.loads(ingestion_result)
+                progress_bar.progress(60)
+                status_text.text("✓ Results parsed. Validating data...")
                 
                 if result_data.get("file_type") == "CSV":
                     st.success("✅ CSV file processed")
+                    progress_bar.progress(100)
                     st.stop()
                     
             except json.JSONDecodeError:
@@ -1976,6 +1297,10 @@ if uploaded_file is not None:
             # EXTRACT AGE AND GENDER FROM PDF
             detected_age, detected_gender = extract_age_gender_from_text(raw_text)
             
+            # Debug: Log what was extracted
+            if detected_age:
+                st.info(f"🔍 Debug: Extracted age={detected_age} from text")
+            
             # Update session state with detected values
             if detected_age:
                 st.session_state.detected_age = detected_age
@@ -2068,8 +1393,13 @@ if uploaded_file is not None:
             # ============================================
             st.subheader("🧠 Multi-Model AI Analysis")
             
+            progress_bar.progress(70)
+            status_text.text("🧠 Running AI models...")
+            
             # Perform multi-model analysis
             ai_analysis = perform_multi_model_analysis(validated_data)
+            progress_bar.progress(85)
+            status_text.text("✓ AI analysis complete. Processing context...")
             
             # Perform contextual analysis (Model 4)
             user_context = {
@@ -2079,6 +1409,20 @@ if uploaded_file is not None:
                 'lifestyle': st.session_state.lifestyle_factors
             }
             contextual_analysis = perform_contextual_analysis(validated_data, user_context)
+            progress_bar.progress(95)
+            status_text.text("✓ Generating report...")
+            
+            # Store analysis results in session state for download
+            st.session_state.ai_analysis = ai_analysis
+            st.session_state.contextual_analysis = contextual_analysis
+            
+            progress_bar.progress(100)
+            status_text.text("✅ Analysis complete!")
+            st.session_state.user_context = user_context
+            
+            # Clear progress indicators after analysis
+            progress_bar.empty()
+            status_text.empty()
             
             if ai_analysis:
                 # Create tabs for different models
@@ -2390,18 +1734,56 @@ if uploaded_file is not None:
             # ============================================
             # DOWNLOAD OPTIONS
             # ============================================
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
+            
+            # Create comprehensive report generator
+            report_generator = create_comprehensive_report_generator()
+            
+            # Get analysis data from session state
+            ai_analysis = st.session_state.get('ai_analysis', {})
+            contextual_analysis = st.session_state.get('contextual_analysis', {})
+            user_context = st.session_state.get('user_context', {})
             
             with col1:
-                report_text = f"Blood Report Analysis\n{'='*40}\nFile: {uploaded_file.name}\n\nParameters:\n"
-                for k, v in validated_data.items():
-                    report_text += f"  {k}: {v.get('value')} {v.get('unit', '')} ({v.get('status', '')})\n"
+                # Generate comprehensive text report
+                comprehensive_report = report_generator.generate_comprehensive_report(
+                    validated_data=validated_data,
+                    ai_analysis=ai_analysis,
+                    contextual_analysis=contextual_analysis,
+                    user_context=user_context,
+                    filename=uploaded_file.name,
+                    format_type="text"
+                )
                 
-                st.download_button("📄 Download Report", report_text, f"report_{uploaded_file.name.split('.')[0]}.txt", "text/plain")
+                st.download_button(
+                    "📄 Download Comprehensive Report", 
+                    comprehensive_report, 
+                    f"comprehensive_report_{uploaded_file.name.split('.')[0]}.txt", 
+                    "text/plain"
+                )
             
             with col2:
+                # Generate JSON report for technical users
+                json_report = report_generator.generate_comprehensive_report(
+                    validated_data=validated_data,
+                    ai_analysis=ai_analysis,
+                    contextual_analysis=contextual_analysis,
+                    user_context=user_context,
+                    filename=uploaded_file.name,
+                    format_type="json"
+                )
+                
+                st.download_button(
+                    "📊 Download JSON Report", 
+                    json_report, 
+                    f"analysis_data_{uploaded_file.name.split('.')[0]}.json", 
+                    "application/json"
+                )
+            
+            with col3:
+                # Keep original CSV export for compatibility
                 try:
-                    st.download_button("📊 Download CSV", ml_csv, f"data_{uploaded_file.name.split('.')[0]}.csv", "text/csv")
+                    st.download_button("📈 Download CSV", ml_csv, f"data_{uploaded_file.name.split('.')[0]}.csv", "text/csv")
                 except:
                     pass
             
@@ -2433,14 +1815,19 @@ if uploaded_file is not None:
         with st.chat_message("assistant"):
             with st.spinner("🤖 Thinking..."):
                 try:
-                    # Pass the actual extracted data to AI agent
-                    report_data = st.session_state.validated_data
+                    # Load report data into agent if not already loaded
+                    if st.session_state.enhanced_ai_agent and not st.session_state.enhanced_ai_agent.analysis_data:
+                        st.session_state.enhanced_ai_agent.load_report_data(ai_analysis)
                     
-                    # Generate personalized response based on extracted data
-                    answer = generate_personalized_response(prompt, report_data)
+                    # Get response from simplified agent
+                    if st.session_state.enhanced_ai_agent:
+                        response = st.session_state.enhanced_ai_agent.process_user_message(prompt)
+                        answer = response.get('message', 'I encountered an issue processing your question.')
+                    else:
+                        answer = "AI agent not initialized. Please refresh the page."
                     
                 except Exception as e:
-                    answer = "I'm here to help with blood report analysis. Please try asking another question."
+                    answer = f"Error: {str(e)}"
                 
                 st.markdown(answer)
         

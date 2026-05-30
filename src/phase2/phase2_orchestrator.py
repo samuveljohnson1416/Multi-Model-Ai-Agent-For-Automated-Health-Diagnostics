@@ -6,41 +6,88 @@ import requests
 import re
 from .advanced_pattern_analysis import Milestone2Integration
 
-# Import unified LLM provider
+# Import unified LLM provider (EXPLANATIONS ONLY - NOT for medical decisions)
 try:
-    from utils.llm_provider import get_llm_provider, generate_text
+    from utils.llm_provider import get_llm_provider
     HAS_LLM_PROVIDER = True
 except ImportError:
     HAS_LLM_PROVIDER = False
 
+# Import rule-based medical reasoning (ALL medical decisions are here)
+try:
+    from core.medical_logic import MedicalLogic
+    HAS_MEDICAL_LOGIC = True
+except ImportError:
+    HAS_MEDICAL_LOGIC = False
+
 
 class Phase2Orchestrator:
-    """Phase-2 Medical AI Analysis using Mistral 7B Instruct via Ollama/HF API with Milestone-2 Integration"""
+    """
+    Phase-2 Medical AI Analysis: RULE-BASED decisions, LLM explanations ONLY
+    
+    ⚠️ CRITICAL ARCHITECTURE:
+    
+    DECISIONS (Rule-Based - deterministic):
+    - Parameter classification → medical_logic.py
+    - Pattern detection → medical_logic.py
+    - Risk scoring → medical_logic.py
+    - Result synthesis → phase2_orchestrator.py
+    
+    EXPLANATIONS (LLM - non-critical):
+    - Human-readable text generation → _call_llm_for_explanation()
+    
+    The LLM is ONLY used for generating explanatory text.
+    It does NOT make medical decisions.
+    All medical logic is rule-based and auditable.
+    """
     
     def __init__(self, ollama_url: str = "http://localhost:11434"):
         self.ollama_url = ollama_url
         self.model_name = "mistral:instruct"
         self.milestone2_integration = Milestone2Integration()
         
-        # Use unified LLM provider if available
+        # Use unified LLM provider ONLY for explanations
         self._llm_provider = get_llm_provider() if HAS_LLM_PROVIDER else None
         
-    def _call_ollama(self, prompt: str, system_prompt: str = "") -> str:
-        """Call LLM API with automatic fallback between Ollama and HF API"""
+        # Load rule-based medical logic
+        self.medical_logic = MedicalLogic() if HAS_MEDICAL_LOGIC else None
         
-        # Use unified provider if available
+    def _call_llm_for_explanation(self, prompt: str, system_prompt: str = "") -> str:
+        """
+        Call LLM ONLY for generating explanatory text about ALREADY-MADE decisions.
+        
+        ⚠️ CRITICAL CONSTRAINTS:
+        - LLM does NOT classify parameters
+        - LLM does NOT compute risk scores
+        - LLM does NOT make medical decisions
+        - LLM ONLY generates human-readable explanations
+        
+        All medical logic is rule-based:
+        - Parameter classification: medical_logic.classify_parameter()
+        - Pattern detection: medical_logic.get_all_detected_patterns()
+        - Risk scoring: medical_logic.calculate_*_risk_score()
+        
+        Args:
+            prompt: Text prompt (containing already-made decisions)
+            system_prompt: System context for the LLM
+            
+        Returns:
+            Generated explanation text (NOT a medical decision)
+        """
+        
+        # Use unified provider if available (EXPLANATIONS ONLY)
         if self._llm_provider:
             try:
                 return self._llm_provider.generate(
                     prompt=prompt,
                     system_prompt=system_prompt,
-                    temperature=0.1,
-                    max_tokens=1000
+                    temperature=0.3,
+                    max_tokens=500
                 )
-            except Exception as e:
-                return f"Error: LLM provider failed - {str(e)}"
+            except Exception:
+                return ""
         
-        # Fallback to direct Ollama call (legacy behavior)
+        # Fallback to direct Ollama call (EXPLANATIONS ONLY)
         try:
             payload = {
                 "model": self.model_name,
@@ -48,9 +95,9 @@ class Phase2Orchestrator:
                 "system": system_prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,
+                    "temperature": 0.3,
                     "top_p": 0.9,
-                    "num_predict": 1000
+                    "num_predict": 500
                 }
             }
             
@@ -63,15 +110,14 @@ class Phase2Orchestrator:
             if response.status_code == 200:
                 return response.json().get("response", "")
             else:
-                return f"Error: Ollama API returned status {response.status_code}"
+                return ""
                 
-        except Exception as e:
-            return f"Error: Failed to connect to Ollama - {str(e)}"
+        except Exception:
+            return ""
     
     def _validate_json_output(self, text: str) -> Optional[Dict]:
         """Extract and validate JSON from LLM output"""
         try:
-            # Find JSON in the response
             json_match = re.search(r'\{.*\}', text, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
@@ -119,262 +165,165 @@ class Phase2Orchestrator:
 
 
 class Model1ParameterInterpreter:
-    """Model 1: Parameter Interpretation using Mistral 7B"""
+    """Model 1: Parameter Interpretation using medical_logic (RULE-BASED, deterministic)"""
     
     def __init__(self, orchestrator):
         self.orchestrator = orchestrator
     
     def interpret_parameters(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Compare each parameter with reference range using LLM"""
+        """Use medical_logic for RULE-BASED parameter classification"""
         
-        # Prepare CSV data for LLM
-        csv_data = []
-        for _, row in df.iterrows():
-            csv_data.append({
-                "test_name": str(row.get("test_name", "")),
-                "value": str(row.get("value", "")),
-                "unit": str(row.get("unit", "")),
-                "reference_range": str(row.get("reference_range", ""))
-            })
+        if not self.orchestrator.medical_logic:
+            return {"error": "Medical logic engine not available"}
         
-        # System prompt for Medical Laboratory Specialist persona
-        system_prompt = """You are a Medical Laboratory Specialist (MD) with 15+ years of experience in clinical laboratory medicine.
-Your ONLY task is to compare laboratory test values with their reference ranges.
-You must output STRICT JSON ONLY with no additional text.
-Never add parameters not in the input.
-Never diagnose diseases.
-Use only: Low, Normal, High, Borderline."""
-        
-        # One-shot prompting
-        prompt = f"""Analyze these laboratory parameters and classify each as Low/Normal/High/Borderline based on the reference range:
-
-CSV Data:
-{json.dumps(csv_data, indent=2)}
-
-For each parameter, compare the value with the reference_range and classify.
-If reference_range is missing or "NA", classify as "Unknown".
-If value is "NA" or missing, classify as "Missing".
-
-Output STRICT JSON format:
-{{
-  "interpretations": [
-    {{
-      "test_name": "parameter_name",
-      "value": "actual_value",
-      "classification": "Low|Normal|High|Borderline|Unknown|Missing",
-      "reference_range": "range_used"
-    }}
-  ],
-  "summary": {{
-    "total_parameters": number,
-    "normal_count": number,
-    "abnormal_count": number
-  }}
-}}"""
-
-        # Call LLM
-        response = self.orchestrator._call_ollama(prompt, system_prompt)
-        
-        # Validate and return JSON
-        result = self.orchestrator._validate_json_output(response)
-        if result:
-            return result
-        else:
-            # Fallback: deterministic classification
-            return self._fallback_classification(csv_data)
-    
-    def _fallback_classification(self, csv_data: List[Dict]) -> Dict[str, Any]:
-        """Deterministic fallback if LLM fails"""
         interpretations = []
         normal_count = 0
         abnormal_count = 0
+        unknown_count = 0
         
-        for param in csv_data:
-            classification = "Unknown"
+        for _, row in df.iterrows():
+            test_name = str(row.get("test_name", "")).strip()
+            value_str = str(row.get("value", "")).strip()
+            unit = str(row.get("unit", "")).strip()
             
-            try:
-                value = param["value"]
-                ref_range = param["reference_range"]
-                
-                if value == "NA" or not value:
-                    classification = "Missing"
-                elif ref_range == "NA" or not ref_range:
+            # Use medical_logic to classify parameter
+            if not value_str or value_str.lower() == "na":
+                classification = "Missing"
+                unknown_count += 1
+                result = {
+                    "test_name": test_name,
+                    "value": value_str,
+                    "unit": unit,
+                    "classification": classification,
+                    "reference_range": "",
+                    "method": "medical_logic",
+                    "deterministic": True
+                }
+            else:
+                try:
+                    value = float(value_str)
+                    logic_result = self.orchestrator.medical_logic.classify_parameter(test_name, value)
+                    
+                    classification = logic_result["status"]
+                    
+                    if classification == "Low":
+                        abnormal_count += 1
+                    elif classification == "High":
+                        abnormal_count += 1
+                    elif classification == "Normal":
+                        normal_count += 1
+                    else:
+                        unknown_count += 1
+                    
+                    result = {
+                        "test_name": test_name,
+                        "value": value_str,
+                        "unit": unit,
+                        "classification": classification,
+                        "reference_range": logic_result.get("reference_range", ""),
+                        "deviation_percent": logic_result.get("deviation_percent", 0),
+                        "method": "medical_logic",
+                        "rule": logic_result.get("rule", ""),
+                        "deterministic": True
+                    }
+                except (ValueError, TypeError):
                     classification = "Unknown"
-                else:
-                    # Simple range parsing
-                    if "-" in ref_range:
-                        parts = ref_range.split("-")
-                        if len(parts) == 2:
-                            try:
-                                low = float(parts[0].strip())
-                                high = float(parts[1].strip())
-                                val = float(value)
-                                
-                                if val < low:
-                                    classification = "Low"
-                                    abnormal_count += 1
-                                elif val > high:
-                                    classification = "High"
-                                    abnormal_count += 1
-                                else:
-                                    classification = "Normal"
-                                    normal_count += 1
-                            except ValueError:
-                                classification = "Unknown"
-            except Exception:
-                classification = "Unknown"
+                    unknown_count += 1
+                    result = {
+                        "test_name": test_name,
+                        "value": value_str,
+                        "unit": unit,
+                        "classification": classification,
+                        "method": "medical_logic",
+                        "deterministic": True
+                    }
             
-            interpretations.append({
-                "test_name": param["test_name"],
-                "value": param["value"],
-                "classification": classification,
-                "reference_range": param["reference_range"]
-            })
+            interpretations.append(result)
         
         return {
             "interpretations": interpretations,
             "summary": {
-                "total_parameters": len(csv_data),
+                "total_parameters": len(interpretations),
                 "normal_count": normal_count,
-                "abnormal_count": abnormal_count
-            }
+                "abnormal_count": abnormal_count,
+                "unknown_count": unknown_count
+            },
+            "decision_method": "RULE-BASED via medical_logic (deterministic, auditable)"
         }
 
 
 class Model2PatternRiskAssessment:
-    """Model 2: Pattern Recognition & Risk Assessment"""
+    """Model 2: Pattern Recognition & Risk Assessment using medical_logic (RULE-BASED, deterministic)"""
     
     def __init__(self, orchestrator):
         self.orchestrator = orchestrator
     
     def assess_patterns(self, df: pd.DataFrame, model1_result: Dict) -> Dict[str, Any]:
-        """Analyze parameter combinations and assess risk"""
+        """Use medical_logic for RULE-BASED pattern detection and risk assessment"""
         
-        # Step 1: Deterministic calculations
-        deterministic_patterns = self._calculate_deterministic_patterns(df)
+        if not self.orchestrator.medical_logic:
+            return {"error": "Medical logic engine not available"}
         
-        # Step 2: LLM-based risk explanation
-        llm_risk_assessment = self._llm_risk_explanation(deterministic_patterns, model1_result)
-        
-        return {
-            "deterministic_patterns": deterministic_patterns,
-            "risk_assessment": llm_risk_assessment
-        }
-    
-    def _calculate_deterministic_patterns(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Calculate known medical ratios and thresholds"""
-        patterns = {}
-        
-        # Convert to dict for easier access
-        params = {}
+        # Build parameter dictionary from CSV
+        parameters = {}
         for _, row in df.iterrows():
-            test_name = str(row.get("test_name", "")).lower()
+            test_name = str(row.get("test_name", "")).lower().strip()
             try:
                 value = float(row.get("value", 0))
-                params[test_name] = value
+                parameters[test_name] = value
             except (ValueError, TypeError):
                 continue
         
-        # Lipid ratios
-        if "total cholesterol" in params and "hdl cholesterol" in params:
-            if params["hdl cholesterol"] > 0:
-                ratio = params["total cholesterol"] / params["hdl cholesterol"]
-                patterns["cholesterol_hdl_ratio"] = {
-                    "value": round(ratio, 2),
-                    "risk_level": "High" if ratio > 5.0 else "Moderate" if ratio > 3.5 else "Low"
-                }
+        # Use medical_logic to detect patterns
+        patterns_detected = self.orchestrator.medical_logic.get_all_detected_patterns(parameters)
         
-        # Anemia patterns
-        hb_low = params.get("hemoglobin", 0) < 12.0
-        rbc_low = params.get("rbc count", 0) < 4.0
-        if hb_low and rbc_low:
-            patterns["anemia_pattern"] = {
-                "detected": True,
-                "risk_level": "Moderate"
-            }
+        # Calculate risk scores using medical_logic
+        risk_scores = {
+            "anemia": self.orchestrator.medical_logic.calculate_anemia_risk_score(parameters),
+            "infection": self.orchestrator.medical_logic.calculate_infection_risk_score(parameters),
+            "bleeding": self.orchestrator.medical_logic.calculate_bleeding_risk_score(parameters),
+            "cardiovascular": self.orchestrator.medical_logic.calculate_cardiovascular_risk_score(parameters),
+            "renal": self.orchestrator.medical_logic.calculate_renal_risk_score(parameters),
+            "overall": self.orchestrator.medical_logic.calculate_overall_risk_score(parameters)
+        }
         
-        # Infection patterns
-        wbc_high = params.get("wbc count", 0) > 11000
-        neutrophil_high = params.get("neutrophils", 0) > 70
-        if wbc_high or neutrophil_high:
-            patterns["infection_pattern"] = {
-                "detected": True,
-                "risk_level": "Moderate"
-            }
-        
-        return patterns
-    
-    def _llm_risk_explanation(self, patterns: Dict, model1_result: Dict) -> Dict[str, Any]:
-        """Use LLM to explain risk levels"""
-        
-        system_prompt = """You are a Medical Laboratory Specialist analyzing laboratory patterns.
-Your task is to provide risk level assessment and brief reasoning.
-Output STRICT JSON ONLY.
-Never diagnose diseases.
-Never mention medication names.
-Use only: Low, Moderate, High risk levels."""
-        
-        prompt = f"""Analyze these laboratory patterns and abnormal findings:
-
-Deterministic Patterns:
-{json.dumps(patterns, indent=2)}
-
-Abnormal Parameters from Model 1:
-{json.dumps([p for p in model1_result.get("interpretations", []) if p["classification"] in ["Low", "High"]], indent=2)}
-
-Provide risk assessment with brief reasoning.
-
-Output STRICT JSON format:
-{{
-  "overall_risk_level": "Low|Moderate|High",
-  "reasoning": "Brief explanation in one sentence",
-  "key_concerns": ["concern1", "concern2"],
-  "pattern_significance": "Low|Moderate|High"
-}}"""
-
-        response = self.orchestrator._call_ollama(prompt, system_prompt)
-        result = self.orchestrator._validate_json_output(response)
-        
-        if result:
-            return result
+        # Determine overall risk level
+        overall_score = risk_scores.get("overall", 0)
+        if overall_score >= 0.7:
+            overall_risk_level = "High"
+        elif overall_score >= 0.4:
+            overall_risk_level = "Moderate"
         else:
-            # Fallback assessment
-            risk_level = "Low"
-            if patterns:
-                high_risk_patterns = [p for p in patterns.values() if isinstance(p, dict) and p.get("risk_level") == "High"]
-                if high_risk_patterns:
-                    risk_level = "High"
-                elif any(p.get("risk_level") == "Moderate" for p in patterns.values() if isinstance(p, dict)):
-                    risk_level = "Moderate"
-            
-            return {
-                "overall_risk_level": risk_level,
-                "reasoning": "Assessment based on deterministic pattern analysis",
-                "key_concerns": list(patterns.keys()),
-                "pattern_significance": risk_level
-            }
+            overall_risk_level = "Low"
+        
+        return {
+            "patterns_detected": patterns_detected,
+            "risk_scores": risk_scores,
+            "overall_risk_level": overall_risk_level,
+            "method": "medical_logic",
+            "deterministic": True,
+            "decision_method": "RULE-BASED via medical_logic (deterministic, auditable)"
+        }
 
 
 class SynthesisEngine:
-    """Synthesis Engine: Aggregate Model 1 and Model 2 outputs"""
+    """Synthesis Engine: Aggregate RULE-BASED decisions without LLM"""
     
     def synthesize(self, model1_result: Dict, model2_result: Dict) -> Dict[str, Any]:
-        """Aggregate outputs without creativity or assumptions"""
+        """Aggregate rule-based outputs"""
         
-        # Extract abnormal findings
+        # Extract abnormal findings (from rules)
         abnormal_params = [
             p for p in model1_result.get("interpretations", [])
-            if p["classification"] in ["Low", "High", "Borderline"]
+            if p["classification"] in ["Low", "High"]
         ]
         
-        # Extract key concerns
-        key_concerns = []
-        if model2_result.get("risk_assessment", {}).get("key_concerns"):
-            key_concerns.extend(model2_result["risk_assessment"]["key_concerns"])
+        # Extract patterns (from rules)
+        patterns = model2_result.get("patterns_detected", [])
         
-        # Determine overall status
+        # Determine overall status (from rules only)
         total_abnormal = len(abnormal_params)
-        risk_level = model2_result.get("risk_assessment", {}).get("overall_risk_level", "Low")
+        risk_level = model2_result.get("overall_risk_level", "Low")
         
         if total_abnormal == 0 and risk_level == "Low":
             overall_status = "Normal"
@@ -386,183 +335,210 @@ class SynthesisEngine:
         return {
             "overall_status": overall_status,
             "abnormal_parameters": abnormal_params,
-            "key_concerns": key_concerns,
+            "patterns_detected": patterns,
             "risk_level": risk_level,
             "summary": {
                 "total_tests": model1_result.get("summary", {}).get("total_parameters", 0),
                 "abnormal_count": total_abnormal,
-                "patterns_detected": len(model2_result.get("deterministic_patterns", {}))
-            }
+                "patterns_count": len(patterns)
+            },
+            "decision_method": "RULE-BASED (all decisions from rules, no LLM)",
+            "deterministic": True
         }
 
 
 class RecommendationGenerator:
-    """Recommendation Generator with strict guardrails"""
+    """Recommendation Generator: Rules for WHAT, LLM only for wording"""
     
     def __init__(self, orchestrator):
         self.orchestrator = orchestrator
     
     def generate_recommendations(self, synthesis_result: Dict) -> Dict[str, Any]:
-        """Generate controlled lifestyle recommendations"""
+        """Generate recommendations based on RULES, use LLM only to word them nicely"""
         
-        system_prompt = """You are a Medical Laboratory Specialist providing general lifestyle guidance.
-You must ONLY provide general lifestyle advice.
-MANDATORY requirements:
-- Recommend consulting a healthcare professional
-- Include medical disclaimer
-- NO disease names
-- NO medication names
-- Focus on: diet, exercise, follow-up guidance
-Output STRICT JSON ONLY."""
-        
+        recommendations = []
         abnormal_params = synthesis_result.get("abnormal_parameters", [])
         risk_level = synthesis_result.get("risk_level", "Low")
         
-        prompt = f"""Based on these laboratory findings, provide general lifestyle recommendations:
-
-Risk Level: {risk_level}
-Abnormal Parameters: {len(abnormal_params)}
-Key Concerns: {synthesis_result.get("key_concerns", [])}
-
-Provide general lifestyle advice focusing on diet, exercise, and follow-up.
-Include mandatory healthcare professional consultation and disclaimer.
-
-Output STRICT JSON format:
-{{
-  "lifestyle_recommendations": [
-    "recommendation1",
-    "recommendation2"
-  ],
-  "follow_up_guidance": "guidance_text",
-  "healthcare_consultation": "mandatory_consultation_text",
-  "medical_disclaimer": "disclaimer_text"
-}}"""
-
-        response = self.orchestrator._call_ollama(prompt, system_prompt)
-        result = self.orchestrator._validate_json_output(response)
+        # RULE-BASED recommendation generation
         
-        if result:
-            return result
-        else:
-            # Fallback recommendations
-            return self._fallback_recommendations(risk_level, len(abnormal_params))
-    
-    def _fallback_recommendations(self, risk_level: str, abnormal_count: int) -> Dict[str, Any]:
-        """Safe fallback recommendations"""
+        # Rule 1: Low hemoglobin detected
+        if any(p["test_name"].lower() in ["hemoglobin", "hb"] and p["classification"] == "Low" 
+               for p in abnormal_params):
+            recommendations.append({
+                "category": "Anemia Management",
+                "priority": "Medium",
+                "actions": [
+                    "Increase iron-rich foods (red meat, spinach, legumes)",
+                    "Combine iron intake with Vitamin C for better absorption",
+                    "Consult healthcare provider for evaluation"
+                ]
+            })
         
-        recommendations = [
-            "Maintain a balanced diet with adequate nutrients",
-            "Engage in regular physical activity as appropriate",
-            "Stay adequately hydrated"
-        ]
+        # Rule 2: High WBC detected
+        if any(p["test_name"].lower() in ["wbc", "white blood cell count"] and p["classification"] == "High" 
+               for p in abnormal_params):
+            recommendations.append({
+                "category": "Immune Support",
+                "priority": "High",
+                "actions": [
+                    "Increase hydration and rest",
+                    "Maintain good hygiene practices",
+                    "Consult healthcare provider if symptoms present"
+                ]
+            })
         
-        if risk_level in ["Moderate", "High"] or abnormal_count > 0:
-            recommendations.extend([
-                "Monitor your health parameters regularly",
-                "Follow up with healthcare provider as recommended"
-            ])
+        # Rule 3: Low platelet detected
+        if any(p["test_name"].lower() in ["platelet", "platelets"] and p["classification"] == "Low" 
+               for p in abnormal_params):
+            recommendations.append({
+                "category": "Bleeding Prevention",
+                "priority": "High",
+                "actions": [
+                    "Avoid contact sports and activities with injury risk",
+                    "Use soft toothbrush to prevent gum bleeding",
+                    "Consult healthcare provider immediately"
+                ]
+            })
+        
+        # Rule 4: High cholesterol detected
+        if any(p["test_name"].lower() in ["total cholesterol", "cholesterol"] and p["classification"] == "High" 
+               for p in abnormal_params):
+            recommendations.append({
+                "category": "Cholesterol Management",
+                "priority": "Medium",
+                "actions": [
+                    "Reduce saturated fat intake",
+                    "Increase fiber intake (fruits, vegetables, whole grains)",
+                    "Engage in regular physical activity",
+                    "Consult healthcare provider for evaluation"
+                ]
+            })
+        
+        # Rule 5: High risk level
+        if risk_level == "High":
+            recommendations.append({
+                "category": "Priority Follow-up",
+                "priority": "High",
+                "actions": [
+                    "Schedule immediate consultation with healthcare provider",
+                    "Bring all lab reports and medical history",
+                    "Do not self-medicate"
+                ]
+            })
+        
+        # General recommendations (always included)
+        recommendations.append({
+            "category": "General Health",
+            "priority": "Medium",
+            "actions": [
+                "Maintain balanced diet",
+                "Regular physical activity (150 min/week)",
+                "Adequate hydration",
+                "Quality sleep (7-9 hours/night)"
+            ]
+        })
         
         return {
-            "lifestyle_recommendations": recommendations,
-            "follow_up_guidance": "Schedule regular health check-ups and follow your healthcare provider's advice",
-            "healthcare_consultation": "IMPORTANT: Consult with a qualified healthcare professional for proper medical evaluation and treatment",
-            "medical_disclaimer": "This analysis is for informational purposes only and does not constitute medical advice, diagnosis, or treatment recommendations"
+            "recommendations": recommendations,
+            "total_recommendations": len(recommendations),
+            "decision_method": "RULE-BASED",
+            "healthcare_consultation": "IMPORTANT: Consult with qualified healthcare professional for proper medical evaluation",
+            "medical_disclaimer": "This analysis is for informational purposes only and does not constitute medical advice or diagnosis"
         }
 
 
-# Add methods to Phase2Orchestrator
+# Bind methods to Phase2Orchestrator
 def _model1_parameter_interpretation(self, df: pd.DataFrame) -> Dict[str, Any]:
-    """Execute Model 1: Parameter Interpretation"""
+    """Execute Model 1: RULE-BASED Parameter Interpretation"""
     model1 = Model1ParameterInterpreter(self)
     return model1.interpret_parameters(df)
 
 def _model2_pattern_risk_assessment(self, df: pd.DataFrame, model1_result: Dict) -> Dict[str, Any]:
-    """Execute Model 2: Pattern Recognition & Risk Assessment"""
+    """Execute Model 2: RULE-BASED Pattern Recognition & Risk Assessment"""
     model2 = Model2PatternRiskAssessment(self)
     return model2.assess_patterns(df, model1_result)
 
 def _synthesis_engine(self, model1_result: Dict, model2_result: Dict) -> Dict[str, Any]:
-    """Execute Synthesis Engine"""
+    """Execute Synthesis Engine (RULE-BASED aggregation)"""
     synthesis = SynthesisEngine()
     return synthesis.synthesize(model1_result, model2_result)
 
 def _recommendation_generator(self, synthesis_result: Dict) -> Dict[str, Any]:
-    """Execute Recommendation Generator"""
+    """Execute RULE-BASED Recommendation Generator"""
     rec_gen = RecommendationGenerator(self)
     return rec_gen.generate_recommendations(synthesis_result)
 
 def _enhanced_synthesis_engine(self, model1_result: Dict, model2_result: Dict, 
                              milestone2_result: Dict) -> Dict[str, Any]:
-    """Enhanced Synthesis Engine that integrates Milestone-2 results"""
+    """Enhanced Synthesis Engine integrating Milestone-2 results (RULE-BASED)"""
     
-    # Get legacy synthesis
-    legacy_synthesis = self._synthesis_engine(model1_result, model2_result)
+    # Get rule-based synthesis
+    base_synthesis = self._synthesis_engine(model1_result, model2_result)
     
     # Extract Milestone-2 insights
     milestone2_analysis = milestone2_result.get("milestone2_analysis", {})
     model2_patterns = milestone2_analysis.get("model2_patterns", {})
     model3_context = milestone2_analysis.get("model3_context", {})
     
-    # Enhanced abnormal findings with pattern context
-    abnormal_params = legacy_synthesis.get("abnormal_parameters", [])
-    
-    # Add pattern-based risk assessment
-    pattern_risk = model2_patterns.get("risk_level", "Low")
+    # Combine risk assessments (use higher risk level)
     detected_patterns = model2_patterns.get("patterns_detected", [])
+    pattern_risk = model2_patterns.get("risk_level", "Low")
+    base_risk = base_synthesis.get("risk_level", "Low")
     
-    # Combine risk levels (take higher of legacy vs Milestone-2)
-    legacy_risk = legacy_synthesis.get("risk_level", "Low")
     risk_levels = {"Low": 1, "Moderate": 2, "High": 3}
-    combined_risk_level = max(risk_levels.get(legacy_risk, 1), risk_levels.get(pattern_risk, 1))
+    combined_risk_level = max(
+        risk_levels.get(base_risk, 1),
+        risk_levels.get(pattern_risk, 1)
+    )
     combined_risk = [k for k, v in risk_levels.items() if v == combined_risk_level][0]
     
-    # Enhanced key concerns
-    enhanced_concerns = legacy_synthesis.get("key_concerns", [])
-    enhanced_concerns.extend(detected_patterns[:3])  # Add top 3 patterns
-    
-    # Add contextual notes if available
-    context_notes = model3_context.get("context_notes", [])
+    # Enhance with milestone-2 patterns
+    enhanced_concerns = [p.get("pattern", "") for p in detected_patterns]
+    context_notes = model3_context.get("context_notes", [])[:3]
     
     return {
-        "overall_status": legacy_synthesis.get("overall_status", "Unknown"),
-        "abnormal_parameters": abnormal_params,
-        "key_concerns": list(set(enhanced_concerns))[:5],  # Deduplicate, limit to 5
+        "overall_status": base_synthesis.get("overall_status", "Unknown"),
+        "abnormal_parameters": base_synthesis.get("abnormal_parameters", []),
         "risk_level": combined_risk,
+        "patterns_detected": base_synthesis.get("patterns_detected", []),
         "milestone2_enhancements": {
             "patterns_detected": detected_patterns,
             "pattern_risk_level": pattern_risk,
-            "context_notes": context_notes[:3],  # Top 3 context notes
+            "context_notes": context_notes,
             "total_patterns": model2_patterns.get("total_patterns", 0)
         },
         "summary": {
             "total_tests": model1_result.get("summary", {}).get("total_parameters", 0),
-            "abnormal_count": len(abnormal_params),
+            "abnormal_count": len(base_synthesis.get("abnormal_parameters", [])),
             "patterns_detected": model2_patterns.get("total_patterns", 0),
             "context_available": len(context_notes) > 0
-        }
+        },
+        "decision_method": "RULE-BASED with Milestone-2 integration"
     }
 
 def _assemble_final_report(self, model1_result: Dict, model2_result: Dict, 
                           synthesis_result: Dict, recommendations: Dict) -> Dict[str, Any]:
-    """Assemble final user-friendly report (legacy compatibility)"""
+    """Assemble final RULE-BASED report (legacy compatibility)"""
     
     return {
         "phase2_analysis": {
             "timestamp": pd.Timestamp.now().isoformat(),
             "model_used": self.model_name,
-            "processing_status": "completed"
+            "processing_status": "completed",
+            "decision_method": "RULE-BASED (deterministic, auditable)"
         },
         "parameter_interpretation": model1_result,
         "pattern_risk_assessment": model2_result,
         "synthesis": synthesis_result,
         "recommendations": recommendations,
-        "medical_disclaimer": "This AI analysis is for informational purposes only. Always consult qualified healthcare professionals for medical decisions."
+        "medical_disclaimer": "This analysis uses rule-based medical reasoning and is for informational purposes only. Consult qualified healthcare professionals for medical decisions."
     }
 
 def _assemble_milestone2_report(self, model1_result: Dict, model2_result: Dict, 
                                milestone2_result: Dict, synthesis_result: Dict, 
                                recommendations: Dict) -> Dict[str, Any]:
-    """Assemble final report with Milestone-2 enhancements"""
+    """Assemble final RULE-BASED report with Milestone-2 enhancements"""
     
     # Get legacy report structure
     legacy_report = self._assemble_final_report(
@@ -585,7 +561,8 @@ def _assemble_milestone2_report(self, model1_result: Dict, model2_result: Dict,
                     "RBC index coordination",
                     "Cross-system abnormalities"
                 ],
-                "risk_assessment": milestone2_analysis.get("model2_patterns", {}).get("risk_level", "Low")
+                "risk_assessment": milestone2_analysis.get("model2_patterns", {}).get("risk_level", "Low"),
+                "decision_method": "RULE-BASED"
             },
             "model3_contextual_analysis": {
                 "implemented": True,
@@ -595,10 +572,11 @@ def _assemble_milestone2_report(self, model1_result: Dict, model2_result: Dict,
             },
             "integration_status": "MILESTONE-2_COMPLIANT",
             "verification": {
-                "model2_uses_parameter_combinations": True,
-                "model2_detects_explicit_patterns": True,
-                "model3_provides_age_gender_context": True,
-                "phase1_authority_preserved": True
+                "model1_authority_preserved": True,
+                "model2_uses_rules_not_llm": True,
+                "model3_provides_context_only": True,
+                "all_decisions_rule_based": True,
+                "llm_explanations_only": True
             }
         },
         "detailed_milestone2_results": milestone2_result
@@ -617,6 +595,6 @@ Phase2Orchestrator._assemble_milestone2_report = _assemble_milestone2_report
 
 
 def process_csv_with_phase2(csv_content: str, ollama_url: str = "http://localhost:11434") -> Dict[str, Any]:
-    """Main entry point for Phase-2 processing with Milestone-2 support"""
+    """Main entry point for Phase-2 processing with RULE-BASED decisions"""
     orchestrator = Phase2Orchestrator(ollama_url)
     return orchestrator.process_csv_to_phase2(csv_content)

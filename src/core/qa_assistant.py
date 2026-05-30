@@ -1,14 +1,31 @@
 """
-Blood Report Q&A Assistant
-Uses Mistral LLM with strict medical prompting for constrained Q&A
-Supports both local Ollama and Hugging Face Inference API
+Blood Report Q&A Assistant - EXPLANATIONS ONLY
+==============================================
+
+⚠️ CRITICAL: This module generates EXPLANATORY text ONLY.
+NO medical decisions are made here.
+
+All medical decisions are made by rule-based deterministic logic:
+- src/core/medical_logic.py: Parameter classification, pattern detection, risk scoring
+- src/phase2/phase2_orchestrator.py: Orchestration and decision synthesis
+
+This module's role: Answer user questions about ALREADY-MADE decisions,
+providing explanatory text based on the analyzed report.
+
+The LLM is constrained to:
+1. Only answer questions about provided report data
+2. Never make independent medical decisions
+3. Always include medical disclaimer
+4. Never override rule-based findings
+
+Supports: Local Ollama or Hugging Face Inference API
 """
 
 import json
 import requests
 from typing import Dict, List, Any, Optional
 
-# Import unified LLM provider
+# Import unified LLM provider (EXPLANATIONS ONLY)
 try:
     from utils.llm_provider import get_llm_provider, LLMProviderType
     HAS_LLM_PROVIDER = True
@@ -19,8 +36,23 @@ except ImportError:
 class BloodReportQAAssistant:
     """
     Medical Report Question-Answering Assistant using Mistral LLM.
-    Sends questions with report data to LLM using strict medical prompt.
-    Supports both local Ollama and Hugging Face Inference API with automatic fallback.
+    
+    ⚠️ CRITICAL CONSTRAINT:
+    This assistant ONLY generates explanatory text for ALREADY-MADE decisions.
+    
+    It does NOT:
+    - Classify parameters (medical_logic.py does this)
+    - Calculate risk scores (medical_logic.py does this)
+    - Detect patterns (medical_logic.py does this)
+    - Make medical decisions (phase2_orchestrator.py does this)
+    
+    It ONLY:
+    - Answers questions about the analyzed report
+    - Explains findings in human-readable text
+    - Provides context for already-determined results
+    - Includes safety disclaimers
+    
+    Supports: Local Ollama or Hugging Face Inference API with automatic fallback
     """
     
     def __init__(self, ollama_url: str = "http://localhost:11434"):
@@ -79,8 +111,24 @@ Safety: "Based on report, not diagnosis. Consult doctor."
     
     def answer_question(self, question: str, use_streaming: bool = False) -> str:
         """
-        Answer a question using Mistral LLM with aggressive speed optimizations
-        Target: 3-8 seconds response time
+        Answer a question using Mistral LLM with aggressive speed optimizations.
+        
+        ⚠️ CRITICAL: This method generates EXPLANATION TEXT ONLY.
+        The medical analysis was already done by rule-based logic.
+        
+        This method:
+        1. Takes a user question
+        2. Formats the already-analyzed report data
+        3. Sends to LLM to generate explanatory text
+        4. Returns human-readable explanation
+        
+        It does NOT:
+        - Make medical decisions
+        - Classify parameters
+        - Calculate risk scores
+        - Override rule-based findings
+        
+        Target response time: 3-8 seconds (optimized)
         """
         if not self.analysis_data:
             return "No blood report analysis data is currently loaded."
@@ -274,12 +322,29 @@ A:"""
         return prompt
     
     def _query_mistral_fast(self, prompt: str) -> str:
-        """Ultra-optimized LLM query for maximum speed - supports Ollama and HF API"""
+        """
+        Ultra-optimized LLM query for maximum speed - supports Ollama and HF API
+        
+        ⚠️ CRITICAL: This method ONLY generates explanation text.
+        
+        The prompt contains:
+        1. Already-analyzed report data (from medical_logic.py)
+        2. Already-made classification results (from medical_logic.py)
+        3. User question about those results
+        
+        The LLM:
+        - Reads the provided data
+        - Formats it into natural language
+        - Does NOT re-classify or re-score parameters
+        - Does NOT override rule-based findings
+        
+        Returns: Human-readable explanation (NOT a medical decision)
+        """
         try:
             # Store the prompt for debugging
             self._last_prompt = prompt
             
-            # Use unified LLM provider if available
+            # Use unified LLM provider if available (EXPLANATIONS ONLY)
             if self._llm_provider:
                 response = self._llm_provider.generate(
                     prompt=prompt,
@@ -302,19 +367,19 @@ A:"""
                 else:
                     return response  # Return error message
             
-            # Fallback to direct Ollama call
+            # Fallback to direct Ollama call (EXPLANATIONS ONLY)
             payload = {
                 "model": self.model_name,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,      # Very low for speed and consistency
+                    "temperature": 0.1,      # Very low for consistency and factuality
                     "top_p": 0.7,            # More focused
                     "max_tokens": 250,       # Shorter responses for speed
                     "num_predict": 250,      # Match max_tokens
                     "num_ctx": 512,          # Very small context window for speed
                     "repeat_penalty": 1.0,   # No penalty for speed
-                    "top_k": 10,             # Very limited vocabulary for speed
+                    "top_k": 10,             # Very limited vocabulary for consistency
                     "num_thread": 4,         # Use multiple threads
                     "stop": ["Q:", "DATA:", "A:", "\n\nQ:", "\n\nDATA:", "Question:", "Answer:"]
                 }
@@ -392,19 +457,6 @@ A:"""
                 
         except Exception:
             return ["Error loading analysis data"]
-    
-    def get_last_prompt(self) -> str:
-        """Get the last prompt sent to the LLM (for debugging)"""
-        return getattr(self, '_last_prompt', "No prompt available")
-    
-    def get_performance_stats(self) -> Dict[str, Any]:
-        """Get performance statistics"""
-        return {
-            "cache_size": len(self._response_cache),
-            "model_warmed_up": self._model_warmed_up,
-            "ollama_available": self._is_ollama_available(),
-            "estimated_response_time": "3-8 seconds (optimized)"
-        }
     
     def clear_cache(self) -> None:
         """Clear response cache to free memory"""

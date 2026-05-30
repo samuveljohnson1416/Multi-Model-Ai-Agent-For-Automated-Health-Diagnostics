@@ -1,9 +1,14 @@
 import json
 import re
+from .phase1_extractor import SHARED_NOISE_PATTERNS
 
 
 class MedicalDocumentValidator:
-    """Medical Document Extraction and Validation Agent for CBC reports"""
+    """Medical Document Extraction and Validation Agent for CBC reports
+    
+    SIMPLIFIED - Uses shared noise patterns from phase1_extractor.py to avoid duplication.
+    Focuses on normalization and validation of extracted medical data only.
+    Primary extraction path uses phase1_extractor.Phase1MedicalImageExtractor."""
     
     def __init__(self):
         # Valid CBC parameters with their common variations
@@ -24,20 +29,9 @@ class MedicalDocumentValidator:
             'platelet_count': ['platelet count', 'platelets', 'platelet', 'plt']
         }
         
-        # Noise patterns to ignore
-        self.ignore_patterns = [
-            r'(?i)(?:address|email|phone|tel|fax)',
-            r'(?i)(?:mindray|sysmex|beckman|abbott|roche)',
-            r'(?i)(?:fully automated|cell counter|analyzer)',
-            r'(?i)(?:date|time|collected|received|reported)',
-            r'(?i)(?:registration|patient id|lab no)',
-            r'(?i)(?:department|laboratory|pathology)',
-            r'(?i)(?:doctor|physician|consultant)',
-            r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}',  # Dates
-            r'\d{1,2}:\d{2}(?::\d{2})?',  # Times
-            r'[A-Z]{2,}\s*\d+',  # Lab codes
-            r'(?i)(?:high|low|normal|absent)$',  # Standalone status words
-        ]
+        # USE SHARED NOISE PATTERNS from phase1_extractor
+        # These are shared with phase1_extractor.py and table_extractor.py
+        self.ignore_patterns = SHARED_NOISE_PATTERNS
     
     def is_noise(self, text):
         """Check if text is noise that should be ignored"""
@@ -262,7 +256,20 @@ class MedicalDocumentValidator:
 
 
 def process_medical_document(ocr_text):
-    """Process OCR text through Medical Document Validation Agent"""
+    """Process OCR text through Medical Document Validation Agent
+    
+    NOTE: Primary extraction path uses phase1_extractor.Phase1MedicalImageExtractor.
+    This function performs validation and normalization on extracted data.
+    
+    Usage:
+        from .phase1_extractor import Phase1MedicalImageExtractor
+        extractor = Phase1MedicalImageExtractor()
+        csv_data = extractor.extract_to_csv(ocr_text)
+        
+        # Then optionally validate with medical_validator:
+        validator = MedicalDocumentValidator()
+        validated = validator.validate_and_extract(csv_data)
+    """
     validator = MedicalDocumentValidator()
     
     try:

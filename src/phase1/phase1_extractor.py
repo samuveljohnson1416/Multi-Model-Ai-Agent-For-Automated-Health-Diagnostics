@@ -3,8 +3,60 @@ import csv
 import io
 
 
+# ============================================================================
+# SHARED NOISE PATTERNS - Used across all Phase 1 extraction modules
+# ============================================================================
+# These patterns identify OCR text that should be ignored during extraction.
+# Consolidated from phase1_extractor, table_extractor, and medical_validator
+# to avoid duplication and ensure consistent preprocessing.
+SHARED_NOISE_PATTERNS = [
+    r'(?i)(?:address|location|phone|tel|mobile|email|fax)',
+    r'(?i)(?:dr\.|doctor|physician|pathologist|consultant)',
+    r'(?i)(?:laboratory|lab\s+name|hospital|clinic|department)',
+    r'(?i)(?:page|pg|page\s+no)\s*\d+',
+    r'(?i)(?:qr\s*code|barcode)',
+    r'(?i)(?:interpretation|conclusion|comment|remarks|note)',
+    r'(?i)(?:signature|authorized|verified|approved)',
+    r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}',  # Dates
+    r'\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?',  # Times
+    r'^[A-Z\s]{15,}$',  # Long all-caps headers
+    r'(?i)(?:registration|patient\s+id|lab\s+no)',
+    r'(?i)(?:mindray|sysmex|beckman|abbott|roche)',  # Equipment names
+    r'(?i)(?:fully\s+automated|cell\s+counter|analyzer)',  # Device types
+    r'(?i)(?:high|low|normal|abnormal)$',  # Isolated status words
+]
+
+
 class Phase1MedicalImageExtractor:
-    """Phase-1 Medical Image Extraction Agent - Image-aware OCR reconstruction with demographic extraction"""
+    """Phase-1 Medical Image Extraction Agent - Image-aware OCR reconstruction with demographic extraction
+    
+    PRIMARY EXTRACTION PATH - Consolidated Architecture:
+    =====================================================
+    This is the single canonical entry point for all Phase 1 OCR extraction.
+    
+    EXTRACTION WORKFLOW:
+    1. Extract demographics (age, gender) from OCR text
+    2. Apply shared noise filtering (SHARED_NOISE_PATTERNS)
+    3. Discover test names in text (using valid_anchors)
+    4. Reconstruct table rows from fragmented OCR output
+    5. Extract structured medical data (test, value, unit, range)
+    6. Generate CSV output
+    
+    CONSOLIDATED RESOURCES:
+    - Noise patterns: Shared via SHARED_NOISE_PATTERNS (used by table_extractor, medical_validator)
+    - Test anchors: Single comprehensive list (hemoglobin, platelets, etc.)
+    - Preprocessing logic: Consolidated here (removed from table_extractor)
+    
+    USAGE:
+        from src.phase1.phase1_extractor import Phase1MedicalImageExtractor
+        extractor = Phase1MedicalImageExtractor()
+        csv_data = extractor.extract_to_csv(ocr_text)
+    
+    For validation/normalization, use medical_validator after extraction:
+        from src.phase1.medical_validator import MedicalDocumentValidator
+        validator = MedicalDocumentValidator()
+        validated_data = validator.validate_and_extract(ocr_text)
+    """
     
     def __init__(self):
         # Valid laboratory test anchors (case-insensitive)
@@ -31,20 +83,10 @@ class Phase1MedicalImageExtractor:
             r'(?i)patient\s*:?\s*.*?\b(male|female|m|f)\b',
         ]
         
-        # OCR noise patterns to completely ignore
-        self.noise_patterns = [
-            r'(?i)(?:address|location|phone|tel|mobile|email)',
-            r'(?i)(?:dr\.|doctor|physician|pathologist|consultant)',
-            r'(?i)(?:laboratory|lab\s+name|hospital|clinic)',
-            r'(?i)(?:page|pg)\s*\d+',
-            r'(?i)(?:qr\s*code|barcode)',
-            r'(?i)(?:interpretation|conclusion|comment|remarks)',
-            r'(?i)(?:signature|authorized|verified|approved)',
-            r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}',  # Dates (except for DOB extraction)
-            r'\d{1,2}:\d{2}(?::\d{2})?',  # Times
-            r'^[A-Z\s]{15,}$',  # Long all-caps headers
-            r'(?i)(?:high|low|normal|abnormal)$',  # Isolated status words
-        ]
+        # USE SHARED NOISE PATTERNS - defined at module level above
+        # These are shared with table_extractor.py and medical_validator.py
+        # to avoid duplication and ensure consistent preprocessing
+        self.noise_patterns = SHARED_NOISE_PATTERNS
         
         # Method patterns that may appear on separate lines
         self.method_patterns = [
@@ -387,6 +429,25 @@ class Phase1MedicalImageExtractor:
 
 
 def extract_phase1_medical_image(ocr_text):
-    """Phase-1 Medical Image Extraction - Main entry point"""
+    """Phase-1 Medical Image Extraction - Main entry point
+    
+    CANONICAL EXTRACTION PATH - Uses consolidated preprocessing:
+    ============================================================
+    Performs complete OCR text → CSV conversion with:
+    - Noise filtering (SHARED_NOISE_PATTERNS)
+    - Demographics extraction (age, gender)
+    - Test discovery (via valid_anchors)
+    - Row reconstruction (handles fragmented OCR)
+    - Structured data extraction
+    
+    Returns:
+        CSV string with columns: test_name, value, unit, reference_range, method, age, gender, raw_line
+    
+    Note:
+        This consolidates preprocessing that was previously duplicated in:
+        - table_extractor.merge_broken_lines() [REMOVED]
+        - table_extractor.parse_table_row() [REMOVED]
+        - medical_validator.extract_table_section() [STILL AVAILABLE for validation]
+    """
     extractor = Phase1MedicalImageExtractor()
     return extractor.extract_to_csv(ocr_text)
