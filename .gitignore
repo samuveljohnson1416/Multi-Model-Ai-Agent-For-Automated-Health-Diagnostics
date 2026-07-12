@@ -17,6 +17,22 @@ ENV/
 .vscode/
 .idea/
 
+
+# Environment files (contains secrets)
+.env
+.env.local
+
+# Project specific
+user_context.db
+*.log
+
+# Streamlit
+.streamlit/
+# IDE
+.vscode/
+.idea/
+.kiro/
+
 # Environment files (contains secrets)
 .env
 .env.local

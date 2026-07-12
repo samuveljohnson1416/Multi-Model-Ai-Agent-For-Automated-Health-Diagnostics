@@ -58,6 +58,9 @@ from core.enhanced_ai_agent import create_enhanced_ai_agent
 from core.comprehensive_report_generator import create_comprehensive_report_generator
 
 
+# Comprehensive Report Generator import
+from core.comprehensive_report_generator import create_comprehensive_report_generator
+
 def perform_multi_model_analysis(report_data):
     """
     Multi-Model AI Analysis Engine (CONSOLIDATED)
@@ -1423,6 +1426,11 @@ if uploaded_file is not None:
             # Clear progress indicators after analysis
             progress_bar.empty()
             status_text.empty()
+            
+            # Store analysis results in session state for download
+            st.session_state.ai_analysis = ai_analysis
+            st.session_state.contextual_analysis = contextual_analysis
+            st.session_state.user_context = user_context
             
             if ai_analysis:
                 # Create tabs for different models

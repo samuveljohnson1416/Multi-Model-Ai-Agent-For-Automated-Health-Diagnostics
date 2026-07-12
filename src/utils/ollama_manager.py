@@ -10,6 +10,10 @@ import os
 import sys
 from typing import Optional, Dict, Any
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +27,7 @@ class OllamaManager:
         self.ollama_url = ollama_url
         self.ollama_process: Optional[subprocess.Popen] = None
         self.is_running = False
-        self.startup_timeout = 30  # seconds
+        self.startup_timeout = 10  # seconds
         
     def is_ollama_running(self) -> bool:
         """Check if Ollama is already running"""
@@ -126,7 +130,7 @@ class OllamaManager:
             
             # Wait for completion with timeout
             try:
-                stdout, stderr = process.communicate(timeout=300)  # 5 minutes timeout
+                stdout, stderr = process.communicate(timeout=60)  # 1 minute timeout
                 if process.returncode == 0:
                     logger.info("Mistral model pulled successfully")
                     return self.check_mistral_model()
@@ -150,6 +154,12 @@ class OllamaManager:
             "ready": False,
             "messages": []
         }
+        
+        # Skip Ollama setup if HF is the primary/only provider
+        provider_priority = os.getenv("LLM_PROVIDER_PRIORITY", "ollama_first").lower()
+        if provider_priority in ("hf_first", "hf_only"):
+            setup_status["messages"].append("ℹ️ Using Hugging Face API as primary LLM provider, skipping Ollama setup")
+            return setup_status
         
         # Step 1: Start Ollama service
         if self.start_ollama_service():
