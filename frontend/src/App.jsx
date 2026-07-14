@@ -1,13 +1,26 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
 import './App.css'
 
-import Dashboard from "./pages/Dashboard";
+
+import { Routes,Route } from 'react-router-dom';
+import Dashboard from './pages/Dashboard.jsx';
+import Chat from './pages/Chat.jsx';
+import Report from './pages/Report.jsx';
+import Analysis from './pages/Analysis.jsx';
+import Upload from './pages/Upload.jsx';
+import Settings from './pages/Settings.jsx';
 
 function App() {
-  return <Dashboard />;
+   return(
+      <Routes>
+      <Route path='/' element={<Dashboard/>} />
+      <Route path='/chat' element={<Chat/>} />
+      <Route path='/report' element={<Report/>} />
+      <Route path='/analysis' element={<Analysis/>} />
+      <Route path='/upload' element={<Upload/>} />
+      <Route path='/settings' element={<Settings/>} />
+
+    </Routes>
+  ) ;
 }
 
 
