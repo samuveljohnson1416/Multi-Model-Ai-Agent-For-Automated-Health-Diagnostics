@@ -11,7 +11,9 @@ function Dashboard() {
       <h1 className="text-3xl font-bold">
         Dashboard
       </h1>
-      {navigationItems.filter((item) => item.showOnDashboard).map((item)=> (
+      {navigationItems.filter(
+        (item) => item.showOnDashboard)
+        .map((item)=> (
       <DashboardCard key={item.id}
         title={item.title}
         description={item.description}
