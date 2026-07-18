@@ -1,4 +1,4 @@
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
@@ -7,39 +7,55 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+*.pyo
+*.pyd
 
-# Virtual Environment
+# ── Virtual environments ──────────────────────────────────────────────────────
 .venv/
 venv/
 ENV/
+env/
 
-# IDE
-.vscode/
-.idea/
-
-
-# Environment files (contains secrets)
-.env
-.env.local
-
-# Project specific
-user_context.db
-*.log
-
-# Streamlit
-.streamlit/
-# IDE
+# ── IDE / editors ─────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 .kiro/
+*.swp
+*.swo
 
-# Environment files (contains secrets)
+# ── Environment & secrets ─────────────────────────────────────────────────────
 .env
 .env.local
+.env.*.local
 
-# Project specific
-user_context.db
+# ── Logs ─────────────────────────────────────────────────────────────────────
 *.log
+logs/
 
-# Streamlit
+# ── Testing & coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+*.lock
+!poetry.lock
+
+# ── OS files ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Project-specific ─────────────────────────────────────────────────────────
+user_context.db
+*.db
 .streamlit/
+
+# ── Temporary / upload cache ──────────────────────────────────────────────────
+tmp/
+temp/
+uploads/

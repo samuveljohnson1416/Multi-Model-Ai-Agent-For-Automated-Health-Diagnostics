@@ -1,32 +1,43 @@
-# Blood Report Analysis System - Dependencies
+# Multi-Model AI Health Diagnostics — Python Dependencies
+# Install: pip install -r requirements.txt
 
-# Core Dependencies
-streamlit>=1.28.0
+# ── FastAPI Backend ──────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9          # Required for file uploads
+
+# ── Core data processing ─────────────────────────────────────────────────────
 pandas>=2.0.0
 numpy>=1.24.0
 
-# OCR and Image Processing
+# ── OCR and image processing ─────────────────────────────────────────────────
 pytesseract>=0.3.10
 Pillow>=10.0.0
 opencv-python-headless>=4.8.0
 pdf2image>=1.16.0
-PyPDF2>=3.0.0
 pdfplumber>=0.9.0
 
-# HTTP Requests (for Ollama and HF API)
+# ── HTTP (for Ollama and HuggingFace API calls) ──────────────────────────────
 requests>=2.31.0
 
-# Environment Configuration
+# ── Environment configuration ─────────────────────────────────────────────────
 python-dotenv>=1.0.0
 
-# Hugging Face Integration
+# ── HuggingFace integration ───────────────────────────────────────────────────
 huggingface-hub>=0.19.0
 
-# Optional: Enhanced Performance
-# torch>=2.0.0  # For GPU acceleration (optional)
-# transformers>=4.30.0  # For alternative LLM backends (optional)
+# ── Streamlit (legacy — only needed if still running the original Streamlit UI)
+# streamlit>=1.28.0
 
-# Development Dependencies (optional)
+# ── PDF parsing fallback ──────────────────────────────────────────────────────
+# PyPDF2>=3.0.0   # replaced by pdfplumber for most use cases
+
+# ── Optional: GPU/transformer backends ───────────────────────────────────────
+# torch>=2.0.0
+# transformers>=4.30.0
+
+# ── Development / testing ─────────────────────────────────────────────────────
 # pytest>=7.0.0
+# httpx>=0.27.0   # for FastAPI test client
 # black>=23.0.0
 # flake8>=6.0.0

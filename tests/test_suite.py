@@ -4,15 +4,14 @@ Tests parameter classification, unit conversion, dynamic reference ranges,
 lipid ratios, Framingham risk score, and metabolic syndrome detection.
 """
 
-import sys
-import os
+# No sys.path manipulation needed — core/, phase1/, phase2/, utils/
+# are top-level packages. Run tests from the project root:
+#   python -m pytest tests/
+#   python tests/test_suite.py
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from src.core.unit_converter import UnitConverter, convert_to_standard_unit, convert_units
-from src.core.dynamic_reference_ranges import DynamicReferenceRanges, validate_parameter_dynamic, get_dynamic_reference
-from src.core.advanced_risk_calculator import AdvancedRiskCalculator
+from core.unit_converter import UnitConverter, convert_to_standard_unit, convert_units
+from core.dynamic_reference_ranges import DynamicReferenceRanges, validate_parameter_dynamic, get_dynamic_reference
+from core.advanced_risk_calculator import AdvancedRiskCalculator
 
 
 class TestResults:
