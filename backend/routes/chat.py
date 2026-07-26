@@ -2,16 +2,23 @@
 POST /api/chat — ask questions about a blood report.
 """
 
+import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..models.chat import ChatRequest, ChatResponse
 from ..models.blood_parameter import BloodParameter
 
 router = APIRouter(prefix="/api", tags=["Chat"])
+limiter = Limiter(key_func=get_remote_address)
+
+logger = logging.getLogger(__name__)
 
 
 @router.post("/chat", response_model=ChatResponse)
+@limiter.limit("30/minute")  # Groq API call — limit per IP
 async def chat_with_report(request: Request, body: ChatRequest):
     """
     Ask a question about a previously analyzed blood report.
@@ -63,7 +70,8 @@ async def chat_with_report(request: Request, body: ChatRequest):
             recommendations=recommendations,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+        logger.error(f"Chat failed for report '{body.report_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Chat failed. Please try again later.")
 
     # Save both messages to history
     await repository.save_chat_message(body.report_id, "user", body.message)

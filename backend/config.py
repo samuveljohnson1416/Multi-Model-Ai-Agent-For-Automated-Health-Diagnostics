@@ -52,6 +52,18 @@ class Settings(BaseSettings):
         description="Comma-separated CORS origins"
     )
 
+    # ── Security ───────────────────────────────────────────────
+    api_key: str = Field(
+        default="",
+        description="Optional API key for endpoint protection. If set, all /api/* requests must include X-API-Key header."
+    )
+    max_upload_mb: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum allowed file upload size in megabytes."
+    )
+
     # ── Derived properties ─────────────────────────────────────
 
     @property
@@ -73,6 +85,14 @@ class Settings(BaseSettings):
     @property
     def has_ocr_space(self) -> bool:
         return bool(self.ocr_space_api_key)
+
+    @property
+    def has_api_key(self) -> bool:
+        return bool(self.api_key)
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
 
     model_config = {
         "env_file": ".env",
