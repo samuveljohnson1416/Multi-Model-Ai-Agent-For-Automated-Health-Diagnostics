@@ -62,19 +62,20 @@ cd frontend
 streamlit run app.py
 ```
 
-### Production / Hugging Face Spaces Deployment
+### Production / Render Deployment
 
-You can use the `start.sh` script to run both services simultaneously. This is particularly useful for deployments in single-container environments like Hugging Face Spaces.
+This project is configured to deploy seamlessly on [Render](https://render.com) using the provided Blueprint.
 
-```bash
-chmod +x start.sh
-./start.sh
-```
+**To deploy:**
+1. Push this repository to GitHub.
+2. In the Render Dashboard, click **New > Blueprint Instance**.
+3. Connect your repository. Render will automatically detect the `render.yaml` file and create two separate Web Services (Frontend and Backend).
+4. Go to the Environment section for each service in the Render Dashboard to fill in your API keys (Groq, Supabase, etc.).
 
-**What `start.sh` does:**
-1. Starts the FastAPI backend in the background on port `8000`.
-2. Waits a few seconds for the backend to initialize.
-3. Starts the Streamlit frontend on port `7860` (the default for HF Spaces) in headless mode.
+**Why Render?**
+- True microservice architecture: FastAPI and Streamlit run and scale independently.
+- Managed routing via `API_BASE_URL`.
+- Clean separation of concerns with `Dockerfile.backend` and `Dockerfile.frontend`.
 
 ## Supported File Formats
 
@@ -90,7 +91,11 @@ chmod +x start.sh
 ├── frontend/           # Streamlit user interface components
 ├── docs/               # Project Documentation
 ├── tests/              # Test files
-├── start.sh            # Combined startup script for deployment
+├── render.yaml         # Render Deployment Blueprint
+├── Dockerfile.backend  # Backend container spec
+├── Dockerfile.frontend # Frontend container spec
+├── start-backend.sh    # Backend startup script
+├── start-frontend.sh   # Frontend startup script
 └── requirements.txt    # Project dependencies
 ```
 
