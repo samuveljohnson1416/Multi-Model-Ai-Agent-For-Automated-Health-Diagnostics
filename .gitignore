@@ -1,14 +1,19 @@
+# Environment
+.env
+.env.local
+.env.production
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-dist/
 *.egg-info/
+dist/
+build/
+*.egg
 
-# Virtual Environment
+# Virtual environment
 .venv/
 venv/
 ENV/
@@ -16,30 +21,28 @@ ENV/
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Environment files (contains secrets)
-.env
-.env.local
+# Database (local SQLite — no longer used but just in case)
+*.db
+*.sqlite3
 
-# Project specific
-user_context.db
+# Logs
 *.log
 
-# Streamlit
-.streamlit/
-# IDE
-.vscode/
-.idea/
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Kiro
 .kiro/
-
-# Environment files (contains secrets)
-.env
-.env.local
-
-# Project specific
-user_context.db
-*.log
-
-# Streamlit
-.streamlit/
+.agents/
+.docs/
