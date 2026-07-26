@@ -1,61 +1,48 @@
-# ── Python ────────────────────────────────────────────────────────────────────
+# Environment
+.env
+.env.local
+.env.production
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-dist/
 *.egg-info/
-*.pyo
-*.pyd
+dist/
+build/
+*.egg
 
-# ── Virtual environments ──────────────────────────────────────────────────────
+# Virtual environment
 .venv/
 venv/
 ENV/
-env/
 
-# ── IDE / editors ─────────────────────────────────────────────────────────────
+# IDE
 .vscode/
 .idea/
-.kiro/
 *.swp
 *.swo
+*~
 
-# ── Environment & secrets ─────────────────────────────────────────────────────
-.env
-.env.local
-.env.*.local
-
-# ── Logs ─────────────────────────────────────────────────────────────────────
-*.log
-logs/
-
-# ── Testing & coverage ────────────────────────────────────────────────────────
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# ── Node / Frontend ───────────────────────────────────────────────────────────
-node_modules/
-frontend/node_modules/
-frontend/dist/
-frontend/build/
-*.lock
-!poetry.lock
-
-# ── OS files ─────────────────────────────────────────────────────────────────
+# OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# ── Project-specific ─────────────────────────────────────────────────────────
-user_context.db
+# Database (local SQLite — no longer used but just in case)
 *.db
-.streamlit/
+*.sqlite3
 
-# ── Temporary / upload cache ──────────────────────────────────────────────────
+# Logs
+*.log
+
+# Temporary files
 tmp/
 temp/
-uploads/
+*.tmp
+
+# Kiro
+.kiro/
+.agents/
+.docs/

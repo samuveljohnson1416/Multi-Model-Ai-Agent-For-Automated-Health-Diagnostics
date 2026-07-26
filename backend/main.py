@@ -1,96 +1,113 @@
 """
-FastAPI Application Entry Point
-================================
-Multi-Model AI Health Diagnostics — Backend API
+FastAPI application — entry point for the backend.
 
-Run with:
-    uvicorn backend.main:app --reload
-
-API prefix:  /api
-Docs:        http://localhost:8000/docs
+Clean lifespan management, CORS, and router registration.
+No global mutable state, no sys.path hacks.
 """
 
 import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.config.settings import settings
-from backend.api.routes_upload import router as upload_router
-from backend.api.routes_analysis import router as analysis_router
-from backend.api.routes_chat import router as chat_router
-from backend.api.routes_health import router as health_router
+from .config import get_settings
+from .db.client import init_supabase, close_supabase
+from .db.repository import ReportRepository
+from .services.ocr_service import OCRService
+from .services.parser_service import ParserService
+from .services.validator_service import ValidatorService
+from .services.llm_service import LLMService
+from .services.analysis_service import AnalysisService
+from .services.chat_service import ChatService
+from .routes import analyze, reports, chat, health
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
+# ── Logging ───────────────────────────────────────────────────
 logging.basicConfig(
-    level=logging.DEBUG if settings.debug else logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Application
-# ---------------------------------------------------------------------------
-app = FastAPI(
-    title=settings.app_title,
-    version=settings.app_version,
-    description=(
-        "AI-powered automated health diagnostics API. "
-        "Supports OCR extraction, multi-model blood report analysis, "
-        "and natural-language Q&A via local/cloud LLMs."
-    ),
-    docs_url="/docs",
-    redoc_url="/redoc",
-)
 
-# ---------------------------------------------------------------------------
-# CORS — allow the React dev server and any production origins
-# ---------------------------------------------------------------------------
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ---------------------------------------------------------------------------
-# Routers
-# ---------------------------------------------------------------------------
-API_PREFIX = "/api"
-
-app.include_router(health_router, prefix=API_PREFIX, tags=["Health"])
-app.include_router(upload_router, prefix=API_PREFIX, tags=["Upload"])
-app.include_router(analysis_router, prefix=API_PREFIX, tags=["Analysis"])
-app.include_router(chat_router, prefix=API_PREFIX, tags=["Chat"])
-
-# ---------------------------------------------------------------------------
-# Root redirect to docs
-# ---------------------------------------------------------------------------
-@app.get("/", include_in_schema=False)
-def root():
-    return {
-        "message": f"{settings.app_title} API is running",
-        "version": settings.app_version,
-        "docs": "/docs",
-        "health": "/api/health",
-    }
+# ── Application state (set during lifespan) ───────────────────
+class AppState:
+    """Container for shared services — injected via app.state."""
+    analysis_service: AnalysisService
+    chat_service: ChatService
+    llm_service: LLMService
+    repository: ReportRepository
 
 
-# ---------------------------------------------------------------------------
-# Startup / shutdown events
-# ---------------------------------------------------------------------------
-@app.on_event("startup")
-async def on_startup():
+# ── Lifespan ──────────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown lifecycle."""
+    settings = get_settings()
     logger.info("=" * 60)
-    logger.info("%s v%s", settings.app_title, settings.app_version)
-    logger.info("Debug mode : %s", settings.debug)
-    logger.info("CORS origins: %s", settings.cors_origins)
-    logger.info("Ollama URL : %s", settings.ollama_url)
+    logger.info("Starting Health Diagnostics API v2.0")
     logger.info("=" * 60)
 
+    # Initialize services
+    init_supabase()
 
-@app.on_event("shutdown")
-async def on_shutdown():
-    logger.info("Shutting down %s", settings.app_title)
+    ocr = OCRService()
+    parser = ParserService()
+    validator = ValidatorService()
+    llm = LLMService()
+    analysis = AnalysisService(ocr, parser, validator, llm)
+    chat_svc = ChatService(llm)
+    repo = ReportRepository()
+
+    # Attach to app state
+    app.state.analysis_service = analysis
+    app.state.chat_service = chat_svc
+    app.state.llm_service = llm
+    app.state.repository = repo
+    app.state.ocr_service = ocr
+
+    logger.info(f"Groq LLM: {'✓ ' + llm.model_name if llm.available else '✗ not configured'}")
+    logger.info(f"Supabase: {'✓ connected' if settings.has_supabase else '✗ using in-memory'}")
+    logger.info(f"OCR: tesseract={'✓' if ocr._tesseract_available else '✗'}, "
+                f"ocr.space={'✓' if ocr._ocr_space_key else '✗'}")
+    logger.info("API ready!")
+
+    yield
+
+    # Cleanup
+    close_supabase()
+    logger.info("Shutdown complete")
+
+
+# ── Create app ────────────────────────────────────────────────
+def create_app() -> FastAPI:
+    """Factory function for the FastAPI application."""
+    settings = get_settings()
+
+    app = FastAPI(
+        title="Health Diagnostics API",
+        description="Multi-Model AI Agent for Blood Report Analysis",
+        version="2.0.0",
+        lifespan=lifespan,
+    )
+
+    # CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Register routers
+    app.include_router(analyze.router)
+    app.include_router(reports.router)
+    app.include_router(chat.router)
+    app.include_router(health.router)
+
+    return app
+
+
+# Module-level app instance (for uvicorn)
+app = create_app()
