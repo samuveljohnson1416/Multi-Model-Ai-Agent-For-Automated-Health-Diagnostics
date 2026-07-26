@@ -34,6 +34,10 @@ class Settings(BaseSettings):
         default=None,
         description="Path to tesseract binary. Auto-detected if None."
     )
+    poppler_path: Optional[str] = Field(
+        default=None,
+        description="Path to poppler bin folder for pdf2image on Windows."
+    )
 
     # ── Supabase ───────────────────────────────────────────────
     supabase_url: str = Field(default="", description="Supabase project URL")

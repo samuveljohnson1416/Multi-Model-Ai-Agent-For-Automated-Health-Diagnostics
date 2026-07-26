@@ -3,20 +3,23 @@ Dashboard Page — analysis results visualization.
 """
 
 
+# pyrefly: ignore [missing-import]
 import streamlit as st
 import pandas as pd
+# pyrefly: ignore [missing-import]
 import plotly.express as px
+# pyrefly: ignore [missing-import]
 import plotly.graph_objects as go
 
 
 st.header("📊 Analysis Dashboard")
 
 # ── Check for data ────────────────────────────────────────────
-if not st.session_state.get("analysis_result"):
+if "analysis_result" not in st.session_state or not st.session_state["analysis_result"]:
     st.info("No analysis loaded. Please upload a report first.")
     st.stop()
 
-result = st.session_state.analysis_result
+result = st.session_state["analysis_result"]
 parameters = result.get("parameters", [])
 summary = result.get("summary", {})
 risks = result.get("risks", {})

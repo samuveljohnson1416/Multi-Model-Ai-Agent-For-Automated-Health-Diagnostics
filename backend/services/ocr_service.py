@@ -262,8 +262,13 @@ class OCRService:
             if file_type == "pdf":
                 try:
                     from pdf2image import convert_from_bytes
+                    settings = get_settings()
                     # Convert all pages without last_page limit
-                    images = convert_from_bytes(file_bytes, dpi=200)
+                    images = convert_from_bytes(
+                        file_bytes, 
+                        dpi=200, 
+                        poppler_path=settings.poppler_path
+                    )
                 except Exception as e:
                     logger.warning(f"pdf2image conversion failed for NVIDIA OCR: {e}")
                     return None
@@ -347,7 +352,14 @@ class OCRService:
             if file_type == "pdf":
                 try:
                     from pdf2image import convert_from_bytes
-                    images = convert_from_bytes(file_bytes, dpi=300, first_page=1, last_page=5)
+                    settings = get_settings()
+                    images = convert_from_bytes(
+                        file_bytes, 
+                        dpi=300, 
+                        first_page=1, 
+                        last_page=5,
+                        poppler_path=settings.poppler_path
+                    )
                 except Exception as e:
                     logger.warning(f"pdf2image conversion failed: {e}")
                     return None
