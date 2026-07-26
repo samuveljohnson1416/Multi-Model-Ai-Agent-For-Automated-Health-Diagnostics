@@ -2,20 +2,24 @@
 Dashboard Page — analysis results visualization.
 """
 
+
+# pyrefly: ignore [missing-import]
 import streamlit as st
 import pandas as pd
+# pyrefly: ignore [missing-import]
 import plotly.express as px
+# pyrefly: ignore [missing-import]
 import plotly.graph_objects as go
 
 
 st.header("📊 Analysis Dashboard")
 
 # ── Check for data ────────────────────────────────────────────
-if not st.session_state.get("analysis_result"):
+if "analysis_result" not in st.session_state or not st.session_state["analysis_result"]:
     st.info("No analysis loaded. Please upload a report first.")
     st.stop()
 
-result = st.session_state.analysis_result
+result = st.session_state["analysis_result"]
 parameters = result.get("parameters", [])
 summary = result.get("summary", {})
 risks = result.get("risks", {})
@@ -131,6 +135,12 @@ if risks and risks.get("risk_factors"):
     framingham = risks.get("framingham_risk")
     if framingham and "risk_percent" in framingham:
         st.info(f"**Framingham 10-Year CVD Risk:** {framingham['risk_percent']}% ({framingham.get('risk_category', 'N/A')})")
+
+# ── Warnings ──────────────────────────────────────────────────
+warnings = result.get("warnings", [])
+if warnings:
+    for warning in warnings:
+        st.warning(warning)
 
 # ── LLM Insights ──────────────────────────────────────────────
 if llm_insights:

@@ -1,0 +1,36 @@
+FROM python:3.11-slim
+
+# ── System dependencies ──────────────────────────────────────
+# Tesseract (OCR) + Poppler (PDF to image) + OpenCV deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    poppler-utils \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ── Python dependencies ──────────────────────────────────────
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ── Application code ─────────────────────────────────────────
+COPY backend/ backend/
+# Empty __init__ needed for package discovery
+RUN touch backend/__init__.py || true
+
+# ── Startup ──────────────────────────────────────────────────
+COPY start-backend.sh .
+RUN chmod +x start-backend.sh
+
+# ── Defaults ─────────────────────────────────────────────────
+ENV API_HOST=0.0.0.0
+ENV DEBUG=false
+ENV CORS_ORIGINS=*
+
+# Render injects $PORT at runtime — do NOT hardcode it here
+EXPOSE 8000
+
+CMD ["./start-backend.sh"]

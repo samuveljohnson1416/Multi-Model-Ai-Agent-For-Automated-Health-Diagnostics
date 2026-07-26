@@ -27,11 +27,16 @@ class Settings(BaseSettings):
     groq_timeout: int = Field(default=30, description="Request timeout in seconds")
 
     # ── OCR ────────────────────────────────────────────────────
+    nvidia_api_key: str = Field(default="", description="NVIDIA API key for Nemotron OCR-v2")
     ocr_space_api_key: str = Field(default="", description="OCR.space API key (free tier: 500/day)")
     ocr_timeout: int = Field(default=30)
     tesseract_cmd: Optional[str] = Field(
         default=None,
         description="Path to tesseract binary. Auto-detected if None."
+    )
+    poppler_path: Optional[str] = Field(
+        default=None,
+        description="Path to poppler bin folder for pdf2image on Windows."
     )
 
     # ── Supabase ───────────────────────────────────────────────
@@ -45,6 +50,18 @@ class Settings(BaseSettings):
     cors_origins: str = Field(
         default="*",
         description="Comma-separated CORS origins"
+    )
+
+    # ── Security ───────────────────────────────────────────────
+    api_key: str = Field(
+        default="",
+        description="Optional API key for endpoint protection. If set, all /api/* requests must include X-API-Key header."
+    )
+    max_upload_mb: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum allowed file upload size in megabytes."
     )
 
     # ── Derived properties ─────────────────────────────────────
@@ -62,8 +79,20 @@ class Settings(BaseSettings):
         return bool(self.supabase_url and self.supabase_key)
 
     @property
+    def has_nvidia_ocr(self) -> bool:
+        return bool(self.nvidia_api_key)
+
+    @property
     def has_ocr_space(self) -> bool:
         return bool(self.ocr_space_api_key)
+
+    @property
+    def has_api_key(self) -> bool:
+        return bool(self.api_key)
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
 
     model_config = {
         "env_file": ".env",

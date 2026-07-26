@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# render.yaml — Render Infrastructure Blueprint
+#
+# Defines two web services:
+#   1. health-diagnostics-api   → FastAPI backend
+#   2. health-diagnostics-ui    → Streamlit frontend
+#
+# Deploy by pushing this repo to Render via "New Blueprint Instance".
+# Secrets (API keys) must be set manually in Render Dashboard after deploy.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Backend: FastAPI ────────────────────────────────────────────────────────
+  - type: web
+    name: health-diagnostics-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    plan: free
+
+    envVars:
+      - key: API_HOST
+        value: "0.0.0.0"
+      - key: DEBUG
+        value: "false"
+      - key: CORS_ORIGINS
+        # After deploying the frontend, update this to your frontend URL:
+        # https://health-diagnostics-ui.onrender.com
+        value: "*"
+
+      # ── Set these as SECRETS in the Render Dashboard ──────────────────────
+      # Dashboard → Service → Environment → Add Secret File / Environment Variable
+      - key: GROQ_API_KEY
+        sync: false           # sync: false = must be set manually in dashboard
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: OCR_SPACE_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: API_KEY
+        sync: false           # Optional: locks down API endpoints
+
+  # ── Frontend: Streamlit ─────────────────────────────────────────────────────
+  - type: web
+    name: health-diagnostics-ui
+    runtime: docker
+    dockerfilePath: ./Dockerfile.frontend
+    plan: free
+
+    envVars:
+      - key: API_BASE_URL
+        # After backend deploys, set this to your backend URL:
+        # https://health-diagnostics-api.onrender.com/api
+        value: "https://health-diagnostics-api.onrender.com/api"
+
+      # ── Set these as SECRETS in the Render Dashboard ──────────────────────
+      - key: API_KEY
+        sync: false           # Must match the backend API_KEY if set

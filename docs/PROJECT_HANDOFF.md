@@ -73,9 +73,12 @@ Database:      backend/db/ (Supabase with in-memory fallback)
 - `frontend/api_client.py` — centralized API communication
 - `frontend/config.py` — frontend settings
 
-### Phase 7: Deployment & Testing ✅
-- `Dockerfile` — multi-service (FastAPI + Streamlit)
-- `start.sh` — startup script for Docker
+### Phase 7: Deployment & Security ✅
+- `render.yaml` — Blueprint for Render deployment (FastAPI and Streamlit as separate services)
+- `Dockerfile.backend` & `start-backend.sh` — Backend service config
+- `Dockerfile.frontend` & `start-frontend.sh` — Frontend service config
+- `backend/middleware/auth.py` — API Key security guard
+- Rate limiting implemented via `slowapi`
 - `tests/test_v2.py` — 39 tests, all passing
 
 ---
@@ -90,13 +93,14 @@ Database:      backend/db/ (Supabase with in-memory fallback)
 | `backend/services/` | 7 files | Business logic + I/O |
 | `backend/db/` | 3 files | Supabase integration |
 | `backend/routes/` | 5 files | REST endpoints |
+| `backend/middleware/` | 2 files | Security middleware (auth, rate limits) |
 | `backend/data/` | 1 file | Reference ranges JSON |
 | `frontend/` | `app.py`, `config.py`, `api_client.py` | Streamlit app |
 | `frontend/pages/` | 4 files | Individual pages |
 | `tests/` | `test_v2.py` | 39 passing tests |
-| Root | `Dockerfile`, `start.sh`, `.env.example` | Deployment |
+| Root | `render.yaml`, 2x `Dockerfile.*`, 2x `start-*.sh`, `.env.example` | Deployment |
 
-**Total new files: 36**
+**Total new files: 40**
 
 ---
 
@@ -147,5 +151,5 @@ python -m pytest tests/test_v2.py -v
 1. Set up Groq API key in `.env` and test LLM features end-to-end
 2. Full end-to-end test: upload PDF → analyze → chat
 3. Set up Supabase project and verify database persistence
-4. Test HuggingFace Spaces deployment with Docker
+4. Deploy to Render using `render.yaml` Blueprint
 5. Add frontend components for reusable chart/table widgets

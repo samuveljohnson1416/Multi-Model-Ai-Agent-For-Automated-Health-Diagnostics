@@ -12,6 +12,7 @@ combinations. This version uses a sane 3-step fallback chain:
 import io
 import json
 import csv
+import base64
 import logging
 import platform
 import shutil
@@ -101,6 +102,7 @@ class OCRService:
 
     def __init__(self):
         settings = get_settings()
+        self._nvidia_api_key = settings.nvidia_api_key if settings.has_nvidia_ocr else None
         self._ocr_space_key = settings.ocr_space_api_key if settings.has_ocr_space else None
         self._ocr_timeout = settings.ocr_timeout
         self._tesseract_available = self._check_tesseract()
@@ -159,7 +161,13 @@ class OCRService:
 
         # ── Image or scanned PDF: OCR ──────────────────────────
         if file_type in ("png", "jpg", "jpeg", "pdf"):
-            # Try Tesseract first
+            # Try NVIDIA API first
+            if self._nvidia_api_key:
+                result = await self._extract_nvidia_nemotron(file_bytes, file_type)
+                if result and len(result.text.strip()) > 20:
+                    return result
+
+            # Try Tesseract fallback
             if self._tesseract_available:
                 result = self._extract_tesseract(file_bytes, file_type)
                 if result and len(result.text.strip()) > 20:
@@ -244,6 +252,92 @@ class OCRService:
 
         return None
 
+    async def _extract_nvidia_nemotron(
+        self, file_bytes: bytes, file_type: str
+    ) -> Optional[ExtractionResult]:
+        """Extract text using NVIDIA Nemotron OCR-v2 API."""
+        try:
+            Image = _lazy_import_pil()
+
+            if file_type == "pdf":
+                try:
+                    from pdf2image import convert_from_bytes
+                    settings = get_settings()
+                    # Convert all pages without last_page limit
+                    images = convert_from_bytes(
+                        file_bytes, 
+                        dpi=200, 
+                        poppler_path=settings.poppler_path
+                    )
+                except Exception as e:
+                    logger.warning(f"pdf2image conversion failed for NVIDIA OCR: {e}")
+                    return None
+            else:
+                images = [Image.open(io.BytesIO(file_bytes))]
+
+            all_text = []
+
+            async with httpx.AsyncClient(timeout=self._ocr_timeout) as client:
+                for img in images:
+                    img_byte_arr = io.BytesIO()
+                    img.save(img_byte_arr, format="JPEG", quality=85)
+                    b64_str = base64.b64encode(img_byte_arr.getvalue()).decode("utf-8")
+
+                    quality = 85
+                    scale = 1.0
+                    while len(b64_str) > 175000:
+                        scale *= 0.9
+                        if scale < 0.2:
+                            break
+                        new_width = int(img.width * scale)
+                        new_height = int(img.height * scale)
+                        resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                        img_byte_arr = io.BytesIO()
+                        resized_img.save(img_byte_arr, format="JPEG", quality=int(quality * scale))
+                        b64_str = base64.b64encode(img_byte_arr.getvalue()).decode("utf-8")
+
+                    invoke_url = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2"
+                    headers = {
+                        "Authorization": f"Bearer {self._nvidia_api_key}",
+                        "Accept": "application/json"
+                    }
+                    payload = {
+                        "input": [
+                            {
+                                "type": "image_url",
+                                "url": f"data:image/jpeg;base64,{b64_str}"
+                            }
+                        ]
+                    }
+
+                    response = await client.post(invoke_url, headers=headers, json=payload)
+                    response.raise_for_status()
+                    
+                    result_json = response.json()
+                    
+                    extracted_text = ""
+                    if "data" in result_json and isinstance(result_json["data"], list):
+                        extracted_text = " ".join([str(item.get("text", "")) for item in result_json["data"]])
+                    elif "choices" in result_json and isinstance(result_json["choices"], list):
+                        extracted_text = result_json["choices"][0].get("message", {}).get("content", "")
+                    else:
+                        extracted_text = json.dumps(result_json)
+
+                    if extracted_text.strip():
+                        all_text.append(extracted_text.strip())
+
+            if all_text:
+                return ExtractionResult(
+                    text="\\n".join(all_text),
+                    source="nvidia_nemotron",
+                    page_count=len(images),
+                )
+
+        except Exception as e:
+            logger.warning(f"NVIDIA Nemotron OCR failed: {e}")
+
+        return None
+
     def _extract_tesseract(
         self, file_bytes: bytes, file_type: str
     ) -> Optional[ExtractionResult]:
@@ -258,7 +352,14 @@ class OCRService:
             if file_type == "pdf":
                 try:
                     from pdf2image import convert_from_bytes
-                    images = convert_from_bytes(file_bytes, dpi=300, first_page=1, last_page=5)
+                    settings = get_settings()
+                    images = convert_from_bytes(
+                        file_bytes, 
+                        dpi=300, 
+                        first_page=1, 
+                        last_page=5,
+                        poppler_path=settings.poppler_path
+                    )
                 except Exception as e:
                     logger.warning(f"pdf2image conversion failed: {e}")
                     return None
@@ -367,7 +468,8 @@ class OCRService:
         """Get OCR provider status for health check."""
         return {
             "name": "ocr",
-            "available": self._tesseract_available or bool(self._ocr_space_key),
+            "available": self._tesseract_available or bool(self._ocr_space_key) or bool(self._nvidia_api_key),
+            "nvidia_nemotron": bool(self._nvidia_api_key),
             "tesseract": self._tesseract_available,
             "ocr_space": bool(self._ocr_space_key),
         }

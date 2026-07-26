@@ -1,21 +1,25 @@
-"""
-POST /api/analyze — upload and analyze a blood report file.
-"""
-
 import uuid
+import logging
 from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Form
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..models.report import AnalysisResult, ReportResponse, UserContext
+from ..config import get_settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["Analysis"])
+limiter = Limiter(key_func=get_remote_address)
 
 VALID_FILE_TYPES = {"pdf", "png", "jpg", "jpeg", "json", "csv", "txt"}
 
 
 @router.post("/analyze", response_model=ReportResponse)
+@limiter.limit("10/minute")  # Expensive AI call — strict limit per IP
 async def analyze_report(
     request: Request,
     file: UploadFile = File(...),
@@ -46,6 +50,14 @@ async def analyze_report(
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
+    # Enforce file size limit (Finding 5 — DoS via large upload)
+    settings = get_settings()
+    if len(file_bytes) > settings.max_upload_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum allowed size is {settings.max_upload_mb} MB.",
+        )
+
     # Build user context
     user_context = None
     if age or gender:
@@ -61,7 +73,9 @@ async def analyze_report(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+        # Log full details internally; never expose internals to caller
+        logger.error(f"Analysis failed for file '{file.filename}' ({ext}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Analysis failed. Please try again later.")
 
     # Save to database
     report_data = {

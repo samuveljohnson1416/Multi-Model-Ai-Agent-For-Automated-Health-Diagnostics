@@ -15,10 +15,11 @@ graph TB
     F -->|HTTP| G
 
     subgraph "Backend (FastAPI)"
-        G[main.py] --> H[routes/analyze.py]
-        G --> I[routes/reports.py]
-        G --> J[routes/chat.py]
-        G --> K[routes/health.py]
+        G[main.py] --> MW[middleware/auth.py]
+        MW --> H[routes/analyze.py]
+        MW --> I[routes/reports.py]
+        MW --> J[routes/chat.py]
+        MW --> K[routes/health.py]
 
         H --> L[services/analysis_service.py]
         J --> M[services/chat_service.py]
@@ -79,4 +80,5 @@ File Upload
 | OCR | Tesseract + OCR.space | Local + cloud fallback |
 | Validation | Pydantic v2 | Type safety, serialization, OpenAPI |
 | Config | pydantic-settings | Typed env vars, validation |
-| Deployment | Docker → HF Spaces | Free hosting, GPU not needed |
+| Security | slowapi, custom middleware | Rate limiting, API key auth |
+| Deployment | Docker → Render | Free hosting (blueprint with 2 services) |
