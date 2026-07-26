@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     groq_timeout: int = Field(default=30, description="Request timeout in seconds")
 
     # ── OCR ────────────────────────────────────────────────────
+    nvidia_api_key: str = Field(default="", description="NVIDIA API key for Nemotron OCR-v2")
     ocr_space_api_key: str = Field(default="", description="OCR.space API key (free tier: 500/day)")
     ocr_timeout: int = Field(default=30)
     tesseract_cmd: Optional[str] = Field(
@@ -60,6 +61,10 @@ class Settings(BaseSettings):
     @property
     def has_supabase(self) -> bool:
         return bool(self.supabase_url and self.supabase_key)
+
+    @property
+    def has_nvidia_ocr(self) -> bool:
+        return bool(self.nvidia_api_key)
 
     @property
     def has_ocr_space(self) -> bool:

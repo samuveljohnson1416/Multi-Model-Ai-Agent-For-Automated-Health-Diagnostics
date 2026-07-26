@@ -86,6 +86,10 @@ class AnalysisService:
         logger.info(f"Step 1: Extracting text from {file_type} file")
         extraction = await self.ocr.extract_text(file_bytes, file_type)
         logger.info(f"Extracted {len(extraction.text)} chars via {extraction.source}")
+        
+        warnings = []
+        if self.ocr._nvidia_api_key and extraction.source == "tesseract":
+            warnings.append("NVIDIA OCR API failed or was unavailable, falling back to local Tesseract OCR.")
 
         # ── Step 2: Parse parameters ──────────────────────────
         logger.info("Step 2: Parsing blood parameters")
@@ -172,6 +176,7 @@ class AnalysisService:
             risks=risk,
             recommendations=recommendations,
             llm_insights=llm_insights,
+            warnings=warnings,
         )
 
     async def _generate_insights(

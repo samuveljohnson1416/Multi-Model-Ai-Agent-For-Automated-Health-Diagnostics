@@ -40,6 +40,10 @@ class AnalysisResult(BaseModel):
         default=None,
         description="LLM-generated clinical insights"
     )
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Non-fatal warnings during processing (e.g. OCR fallbacks)"
+    )
     disclaimer: str = Field(
         default=(
             "This analysis is for informational purposes only and does not constitute "
