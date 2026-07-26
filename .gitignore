@@ -18,6 +18,9 @@ build/
 venv/
 ENV/
 
+# Testing
+.pytest_cache/
+
 # IDE
 .vscode/
 .idea/
@@ -48,4 +51,5 @@ temp/
 .docs/
 
 # Excluded by User Request
-docs/
+docs/*
+!docs/ARCHITECTURE.md
