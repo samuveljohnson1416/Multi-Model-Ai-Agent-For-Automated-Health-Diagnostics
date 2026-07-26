@@ -46,3 +46,7 @@ temp/
 .kiro/
 .agents/
 .docs/
+
+# Excluded by User Request
+docs/
+start.sh
