@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2.0.2] — 2026-07-26
+
+### 🛡️ Security Hardening
+- Added `APIKeyMiddleware` to lock down all `/api/*` endpoints via `X-API-Key`.
+- Added `slowapi` rate limiting (10/min for `/analyze`, 30/min for `/chat`).
+- Enforced max upload size limit (`MAX_UPLOAD_MB`).
+- Sanitized 500 error responses to prevent internal stack trace leakage.
+- Disabled Swagger/OpenAPI docs in production mode.
+
+### 🚀 Deployment Migration (HuggingFace to Render)
+- Split single monolith container into two separate services for Render deployment.
+- Created `render.yaml` Infrastructure as Code blueprint.
+- Added `Dockerfile.backend` and `start-backend.sh`.
+- Added `Dockerfile.frontend` and `start-frontend.sh`.
+- Removed old `Dockerfile` and `start.sh`.
+
+---
+
 ## [2.0.1] — 2026-07-26
 
 ### 🧹 Project Cleanup
@@ -51,8 +69,9 @@ All notable changes to this project are documented here.
   - Multi-page navigation (upload, dashboard, chat, history)
   - Centralized API client (no direct backend imports)
 - `tests/test_v2.py` — 39 tests covering domain, services, and models
-- `Dockerfile` — multi-service container for HF Spaces
-- `start.sh` — startup script for Docker
+- `render.yaml` — Render infrastructure blueprint
+- `Dockerfile.backend`, `Dockerfile.frontend` — separate containers
+- `start-backend.sh`, `start-frontend.sh` — Render startup scripts
 - `.env.example` — template with setup instructions
 - `docs/PROJECT_HANDOFF.md` — complete project context
 - `docs/TODO.md` — task tracking

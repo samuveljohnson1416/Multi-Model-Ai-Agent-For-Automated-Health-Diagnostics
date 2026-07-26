@@ -87,3 +87,21 @@
 - Auto-generates OpenAPI docs
 - Validates at every boundary
 - Easy to evolve (change once, works everywhere)
+
+---
+
+### D6: Render Deployment over HuggingFace Spaces
+
+**Context:** Originally targeted HuggingFace Spaces, but encountered port limitations (HF Spaces allows exactly 1 exposed port, but we need 2 for separated backend and frontend) and cost concerns (HF Spaces free tier is limited and paid tiers are expensive).
+
+**Decision:** Migrate to Render with a 2-service `render.yaml` blueprint.
+
+**Rationale:**
+- True microservice architecture (frontend and backend scale independently)
+- Free tier allows 2 separate web services
+- Render dynamically injects `$PORT`, which we capture via `start-backend.sh` and `start-frontend.sh`
+- Enables using two separate lightweight Dockerfiles (`Dockerfile.backend`, `Dockerfile.frontend`) instead of a giant monolith image.
+
+**Tradeoffs:**
+- Cold starts on the free tier (first request takes 30s-1m to boot)
+- Need to manually set secrets in two different places in the dashboard

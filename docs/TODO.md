@@ -12,7 +12,8 @@
 - [x] Phase 4: Database layer (Supabase client, repository with fallback)
 - [x] Phase 5: FastAPI routes (analyze, reports, chat, health)
 - [x] Phase 6: Streamlit frontend (multi-page app, 4 pages, API client)
-- [x] Phase 7: Deployment config (Dockerfile, start.sh) + Tests (39 passing)
+- [x] Phase 7: Deployment config (render.yaml, Dockerfiles, start scripts) + Tests (39 passing)
+- [x] Phase 8: Security Hardening (auth middleware, rate limits, size limits, sanitized errors)
 - [x] Cleanup: Removed all old v1 code, rebuilt .env for Groq
 
 ---
@@ -23,12 +24,10 @@
 - [ ] Set up Groq API key in `.env` and verify LLM features end-to-end
 - [ ] Full end-to-end test: upload PDF → analysis → chat
 - [ ] Set up Supabase project and test database persistence
-- [ ] Test HuggingFace Spaces deployment via Docker
+- [ ] Deploy to Render using the `render.yaml` blueprint
 
 ### Medium Priority
 - [ ] Create `frontend/components/` (reusable parameter_table, risk_chart, sidebar)
-- [ ] Add API authentication (optional Supabase auth)
-- [ ] Add rate limiting on API endpoints
 - [ ] Improve error messages in frontend for common failure cases
 
 ### Low Priority

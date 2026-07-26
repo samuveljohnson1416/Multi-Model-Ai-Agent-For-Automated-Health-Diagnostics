@@ -1,0 +1,31 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# ── Python dependencies ──────────────────────────────────────
+# Only install frontend-relevant packages to keep image small
+COPY requirements.txt .
+RUN pip install --no-cache-dir \
+    streamlit>=1.28.0 \
+    pandas>=2.0.0 \
+    numpy>=1.24.0 \
+    plotly>=5.18.0 \
+    httpx>=0.25.0 \
+    python-dotenv>=1.0.0
+
+# ── Application code ─────────────────────────────────────────
+COPY frontend/ frontend/
+
+# ── Startup ──────────────────────────────────────────────────
+COPY start-frontend.sh .
+RUN chmod +x start-frontend.sh
+
+# ── Defaults ─────────────────────────────────────────────────
+# API_BASE_URL must be overridden at runtime to point to the
+# deployed backend URL: https://health-diagnostics-api.onrender.com/api
+ENV API_BASE_URL=http://localhost:8000/api
+
+# Render injects $PORT at runtime — do NOT hardcode it here
+EXPOSE 8501
+
+CMD ["./start-frontend.sh"]
