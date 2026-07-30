@@ -19,6 +19,12 @@ from .llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
+# ── Enable DEBUG logging for extraction/parsing checkpoints ──────────────────
+# These are noisy and only emit when the corresponding loggers are at DEBUG.
+# Flip to logging.INFO to silence them in production without removing the code.
+logging.getLogger("backend.services.ocr_service").setLevel(logging.DEBUG)
+logging.getLogger("backend.services.parser_service").setLevel(logging.DEBUG)
+
 
 # System prompt for clinical insights
 CLINICAL_SYSTEM_PROMPT = """You are a medical laboratory assistant AI. You analyze blood test results
@@ -93,6 +99,18 @@ class AnalysisService:
 
         # ── Step 2: Parse parameters ──────────────────────────
         logger.info("Step 2: Parsing blood parameters")
+
+        # ── [RAW TEXT DUMP] Full extraction output before any parsing ──
+        # This is the definitive boundary between extraction and parsing.
+        # If a value appears here but not in parsed params, it died in parsing.
+        # If it's absent here, it was lost in extraction (pdfplumber / OCR).
+        logger.debug(
+            "[RAW TEXT DUMP] %d chars via '%s'. Full text below:\n%s",
+            len(extraction.text),
+            extraction.source,
+            extraction.text,
+        )
+
         raw_params = self.parser.parse(extraction.text)
 
         if not raw_params:

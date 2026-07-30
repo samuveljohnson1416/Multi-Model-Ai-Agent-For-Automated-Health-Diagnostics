@@ -79,8 +79,8 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"Groq LLM: {'✓ ' + llm.model_name if llm.available else '✗ not configured'}")
     logger.info(f"Supabase: {'✓ connected' if settings.has_supabase else '✗ using in-memory'}")
-    logger.info(f"OCR: tesseract={'✓' if ocr._tesseract_available else '✗'}, "
-                f"ocr.space={'✓' if ocr._ocr_space_key else '✗'}")
+    tesseract_status = "✓" if ocr._tesseract_available else ("✗ [DEV: disabled]" if not ocr._tesseract_enabled else "✗ not found")
+    logger.info(f"OCR: nvidia_nemotron={'✓' if ocr._nvidia_api_key else '✗'}, tesseract={tesseract_status}")
     logger.info(f"API Key guard: {'✓ enabled' if settings.has_api_key else '✗ disabled (set API_KEY to enable)'}")
     logger.info(f"Max upload size: {settings.max_upload_mb} MB")
     logger.info("API ready!")

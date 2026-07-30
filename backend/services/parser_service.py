@@ -20,72 +20,72 @@ logger = logging.getLogger(__name__)
 
 PARAMETER_PATTERNS = [
     # CBC Parameters
-    (r"(?:Hemoglobin|HB|Hb|HGB|HEMOGLOBIN)\s*[:=]?\s*(\d+\.?\d*)", "Hemoglobin", "g/dL"),
-    (r"(?:RBC|Red Blood Cell|Total RBC Count)\s*[:=]?\s*(\d+\.?\d*)", "RBC", "mill/cumm"),
-    (r"(?:WBC|White Blood Cell|Total WBC Count|Total WBC)\s*[:=]?\s*(\d+\.?\d*)", "WBC", "/cumm"),
-    (r"(?:Platelet|PLT|Platelets|Platelet Count)\s*[:=]?\s*(\d+\.?\d*)", "Platelet", "/cumm"),
-    (r"(?:PCV|Hematocrit|HCT|Packed Cell Volume)\s*[:=]?\s*(\d+\.?\d*)", "PCV", "%"),
-    (r"(?:MCV|Mean Corpuscular Volume)\s*[:=]?\s*(\d+\.?\d*)", "MCV", "fL"),
-    (r"(?:MCH|Mean Corpuscular Hemoglobin)\s*(?!C)[:=]?\s*(\d+\.?\d*)", "MCH", "pg"),
-    (r"(?:MCHC|Mean Corpuscular Hemoglobin Concentration)\s*[:=]?\s*(\d+\.?\d*)", "MCHC", "g/dL"),
-    (r"(?:RDW|Red Cell Distribution Width)\s*[:=]?\s*(\d+\.?\d*)", "RDW", "%"),
-    (r"(?:MPV|Mean Platelet Volume)\s*[:=]?\s*(\d+\.?\d*)", "MPV", "fL"),
+    (r"(?:Haemoglobin|Hemoglobin|HB|Hb|Hgb|HGB|HEMOGLOBIN)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Hemoglobin", "g/dL"),
+    (r"(?:RBC|Red Blood Cell|Total RBC Count)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "RBC", "mill/cumm"),
+    (r"(?:WBC|White Blood Cell|Total WBC Count|Total WBC)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "WBC", "/cumm"),
+    (r"(?:Platelet|PLT|Platelets|Platelet Count)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Platelet", "/cumm"),
+    (r"(?:PCV|Hematocrit|HCT|Packed Cell Volume)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "PCV", "%"),
+    (r"(?:MCV|Mean Corpuscular Volume)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "MCV", "fL"),
+    (r"(?:MCH|Mean Corpuscular Hemoglobin)(?!C)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "MCH", "pg"),
+    (r"(?:MCHC|Mean Corpuscular Hemoglobin Concentration)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "MCHC", "g/dL"),
+    (r"(?:RDW|Red Cell Distribution Width)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "RDW", "%"),
+    (r"(?:MPV|Mean Platelet Volume)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "MPV", "fL"),
 
     # Differential Count
-    (r"(?:Neutrophil|Neutrophils)\s*[:=]?\s*(\d+\.?\d*)", "Neutrophils", "%"),
-    (r"(?:Lymphocyte|Lymphocytes)\s*[:=]?\s*(\d+\.?\d*)", "Lymphocytes", "%"),
-    (r"(?:Eosinophil|Eosinophils)\s*[:=]?\s*(\d+\.?\d*)", "Eosinophils", "%"),
-    (r"(?:Monocyte|Monocytes)\s*[:=]?\s*(\d+\.?\d*)", "Monocytes", "%"),
-    (r"(?:Basophil|Basophils)\s*[:=]?\s*(\d+\.?\d*)", "Basophils", "%"),
-    (r"(?:ESR|Erythrocyte Sedimentation Rate)\s*[:=]?\s*(\d+\.?\d*)", "ESR", "mm/hr"),
+    (r"(?:Neutrophil|Neutrophils)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Neutrophils", "%"),
+    (r"(?:Lymphocyte|Lymphocytes)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Lymphocytes", "%"),
+    (r"(?:Eosinophil|Eosinophils)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Eosinophils", "%"),
+    (r"(?:Monocyte|Monocytes)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Monocytes", "%"),
+    (r"(?:Basophil|Basophils)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Basophils", "%"),
+    (r"(?:ESR|Erythrocyte Sedimentation Rate)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "ESR", "mm/hr"),
 
     # Metabolic Panel
-    (r"(?:Glucose|Blood Sugar|Fasting Glucose|FBS)\s*[:=]?\s*(\d+\.?\d*)", "Glucose", "mg/dL"),
-    (r"(?:HbA1c|Glycated Hemoglobin|A1C)\s*[:=]?\s*(\d+\.?\d*)", "HbA1c", "%"),
+    (r"(?:Glucose|Blood Sugar|Fasting Glucose|FBS)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Glucose", "mg/dL"),
+    (r"(?:HbA1c|Glycated Hemoglobin|A1C)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "HbA1c", "%"),
 
     # Lipid Panel
-    (r"(?:Total Cholesterol|Cholesterol|CHOL)\s*[:=]?\s*(\d+\.?\d*)", "Cholesterol", "mg/dL"),
-    (r"(?:HDL|HDL Cholesterol|HDL-C)\s*[:=]?\s*(\d+\.?\d*)", "HDL", "mg/dL"),
-    (r"(?:LDL|LDL Cholesterol|LDL-C)\s*[:=]?\s*(\d+\.?\d*)", "LDL", "mg/dL"),
-    (r"(?:Triglycerides|TG|Triglyceride)\s*[:=]?\s*(\d+\.?\d*)", "Triglycerides", "mg/dL"),
-    (r"(?:VLDL)\s*[:=]?\s*(\d+\.?\d*)", "VLDL", "mg/dL"),
+    (r"(?:Total Cholesterol|Cholesterol|CHOL)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Cholesterol", "mg/dL"),
+    (r"(?:HDL|HDL Cholesterol|HDL-C)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "HDL", "mg/dL"),
+    (r"(?:LDL|LDL Cholesterol|LDL-C)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "LDL", "mg/dL"),
+    (r"(?:Triglycerides|TG|Triglyceride)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Triglycerides", "mg/dL"),
+    (r"(?:VLDL)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "VLDL", "mg/dL"),
 
     # Renal Panel
-    (r"(?:Creatinine|CREAT|Serum Creatinine)\s*[:=]?\s*(\d+\.?\d*)", "Creatinine", "mg/dL"),
-    (r"(?:BUN|Blood Urea Nitrogen)\s*[:=]?\s*(\d+\.?\d*)", "BUN", "mg/dL"),
-    (r"(?:Urea)\s*[:=]?\s*(\d+\.?\d*)", "Urea", "mg/dL"),
-    (r"(?:Uric Acid)\s*[:=]?\s*(\d+\.?\d*)", "Uric_Acid", "mg/dL"),
+    (r"(?:Creatinine|CREAT|Serum Creatinine)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Creatinine", "mg/dL"),
+    (r"(?:BUN|Blood Urea Nitrogen)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "BUN", "mg/dL"),
+    (r"(?:Urea)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Urea", "mg/dL"),
+    (r"(?:Uric Acid)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Uric_Acid", "mg/dL"),
 
     # Liver Panel
-    (r"(?:Bilirubin Total|Total Bilirubin|Bilirubin)\s*[:=]?\s*(\d+\.?\d*)", "Bilirubin_Total", "mg/dL"),
-    (r"(?:Bilirubin Direct|Direct Bilirubin)\s*[:=]?\s*(\d+\.?\d*)", "Bilirubin_Direct", "mg/dL"),
-    (r"(?:ALT|SGPT|Alanine Aminotransferase)\s*[:=]?\s*(\d+\.?\d*)", "ALT", "U/L"),
-    (r"(?:AST|SGOT|Aspartate Aminotransferase)\s*[:=]?\s*(\d+\.?\d*)", "AST", "U/L"),
-    (r"(?:ALP|Alkaline Phosphatase)\s*[:=]?\s*(\d+\.?\d*)", "ALP", "U/L"),
-    (r"(?:GGT|Gamma GT)\s*[:=]?\s*(\d+\.?\d*)", "GGT", "U/L"),
-    (r"(?:Total Protein)\s*[:=]?\s*(\d+\.?\d*)", "Total_Protein", "g/dL"),
-    (r"(?:Albumin)\s*[:=]?\s*(\d+\.?\d*)", "Albumin", "g/dL"),
-    (r"(?:Globulin)\s*[:=]?\s*(\d+\.?\d*)", "Globulin", "g/dL"),
+    (r"(?:Bilirubin Total|Total Bilirubin|Bilirubin)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Bilirubin_Total", "mg/dL"),
+    (r"(?:Bilirubin Direct|Direct Bilirubin)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Bilirubin_Direct", "mg/dL"),
+    (r"(?:ALT|SGPT|Alanine Aminotransferase)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "ALT", "U/L"),
+    (r"(?:AST|SGOT|Aspartate Aminotransferase)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "AST", "U/L"),
+    (r"(?:ALP|Alkaline Phosphatase)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "ALP", "U/L"),
+    (r"(?:GGT|Gamma GT)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "GGT", "U/L"),
+    (r"(?:Total Protein)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Total_Protein", "g/dL"),
+    (r"(?:Albumin)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Albumin", "g/dL"),
+    (r"(?:Globulin)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Globulin", "g/dL"),
 
     # Electrolytes
-    (r"(?:Sodium|Na)\s*[:=]?\s*(\d+\.?\d*)", "Sodium", "mEq/L"),
-    (r"(?:Potassium|K)\s*[:=]?\s*(\d+\.?\d*)", "Potassium", "mEq/L"),
-    (r"(?:Chloride|Cl)\s*[:=]?\s*(\d+\.?\d*)", "Chloride", "mEq/L"),
-    (r"(?:Calcium|Ca)\s*[:=]?\s*(\d+\.?\d*)", "Calcium", "mg/dL"),
+    (r"(?:Sodium|Na)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Sodium", "mEq/L"),
+    (r"(?:Potassium|K)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Potassium", "mEq/L"),
+    (r"(?:Chloride|Cl)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Chloride", "mEq/L"),
+    (r"(?:Calcium|Ca)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Calcium", "mg/dL"),
 
     # Iron & Vitamins
-    (r"(?:Iron|Serum Iron)\s*[:=]?\s*(\d+\.?\d*)", "Iron", "mcg/dL"),
-    (r"(?:Ferritin)\s*[:=]?\s*(\d+\.?\d*)", "Ferritin", "ng/mL"),
-    (r"(?:Vitamin B12|B12)\s*[:=]?\s*(\d+\.?\d*)", "Vitamin_B12", "pg/mL"),
-    (r"(?:Vitamin D|25-OH Vitamin D)\s*[:=]?\s*(\d+\.?\d*)", "Vitamin_D", "ng/mL"),
+    (r"(?:Iron|Serum Iron)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Iron", "mcg/dL"),
+    (r"(?:Ferritin)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Ferritin", "ng/mL"),
+    (r"(?:Vitamin B12|B12)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Vitamin_B12", "pg/mL"),
+    (r"(?:Vitamin D|25-OH Vitamin D)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "Vitamin_D", "ng/mL"),
 
     # Thyroid
-    (r"(?:TSH|Thyroid Stimulating Hormone)\s*[:=]?\s*(\d+\.?\d*)", "TSH", "mIU/L"),
-    (r"(?:T3|Triiodothyronine)\s*[:=]?\s*(\d+\.?\d*)", "T3", "ng/dL"),
-    (r"(?:T4|Thyroxine)\s*[:=]?\s*(\d+\.?\d*)", "T4", "mcg/dL"),
+    (r"(?:TSH|Thyroid Stimulating Hormone)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "TSH", "mIU/L"),
+    (r"(?:T3|Triiodothyronine)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "T3", "ng/dL"),
+    (r"(?:T4|Thyroxine)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "T4", "mcg/dL"),
 
     # Inflammatory Markers
-    (r"(?:CRP|C-Reactive Protein)\s*[:=]?\s*(\d+\.?\d*)", "CRP", "mg/L"),
+    (r"(?:CRP|C-Reactive Protein)\s*(?:\([^)]*\))?\s*[:=]?\s*(\d+\.?\d*)", "CRP", "mg/L"),
 ]
 
 # Sanity bounds per parameter (reject clearly wrong OCR reads)
@@ -179,7 +179,13 @@ class ParserService:
         parameters = {}
         lines = text.split("\n")
 
-        for line in lines:
+        # ── [PARSING CHECKPOINT] Dump every line entering the parser ──
+        logger.debug("[PARSING CHECKPOINT] Total lines to parse: %d", len(lines))
+        for i, line in enumerate(lines, start=1):
+            logger.debug("[PARSING CHECKPOINT] Input line %03d: %r", i, line)
+
+        for line_num, line in enumerate(lines, start=1):
+            line_matched = False
             for pattern, param_name, default_unit in PARAMETER_PATTERNS:
                 # Skip if we already found this parameter
                 if param_name in parameters:
@@ -187,12 +193,19 @@ class ParserService:
 
                 match = re.search(pattern, line, re.IGNORECASE)
                 if match:
+                    line_matched = True
                     try:
                         value = float(match.group(1))
 
                         # Sanity check
                         bounds = SANITY_BOUNDS.get(param_name)
                         if bounds and not (bounds[0] <= value <= bounds[1]):
+                            logger.debug(
+                                "[PARSING CHECKPOINT] Line %03d: SANITY REJECTED %r "
+                                "-> %s=%.4f (bounds: %.2f-%.2f) from line: %r",
+                                line_num, match.group(0), param_name, value,
+                                bounds[0], bounds[1], line,
+                            )
                             continue
 
                         # Try to extract unit from the line
@@ -208,9 +221,26 @@ class ParserService:
                         if ref_range:
                             parameters[param_name]["reference_range"] = ref_range
 
+                        logger.debug(
+                            "[PARSING CHECKPOINT] Line %03d: ACCEPTED %s=%.4f %s "
+                            "(ref_range=%r) from line: %r",
+                            line_num, param_name, value, unit, ref_range, line,
+                        )
+
                     except ValueError:
                         continue
 
+            if not line_matched and line.strip():
+                logger.debug(
+                    "[PARSING CHECKPOINT] Line %03d: NO PATTERN MATCH for line: %r",
+                    line_num, line,
+                )
+
+        # ── [PARSING CHECKPOINT] Final result summary ──
+        logger.debug(
+            "[PARSING CHECKPOINT] Parsing complete. Found %d parameters: %s",
+            len(parameters), list(parameters.keys()),
+        )
         return parameters
 
     def _extract_unit(self, line: str, value_end: int) -> Optional[str]:

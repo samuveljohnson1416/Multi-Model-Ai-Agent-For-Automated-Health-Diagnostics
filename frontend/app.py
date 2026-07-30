@@ -6,9 +6,9 @@ This is 50 lines, not 2,830.
 """
 
 import streamlit as st
-import uuid
 
 from config import APP_TITLE, APP_SUBTITLE
+from session import init_session_state
 
 
 # ── Page Config ───────────────────────────────────────────────
@@ -21,14 +21,9 @@ st.set_page_config(
 
 
 # ── Session State ─────────────────────────────────────────────
-if "user_id" not in st.session_state:
-    st.session_state.user_id = str(uuid.uuid4())
-if "report_id" not in st.session_state:
-    st.session_state.report_id = None
-if "analysis_result" not in st.session_state:
-    st.session_state.analysis_result = None
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+# Centralised in session.py — safe to call here and in every page.
+init_session_state()
+
 
 
 # ── Navigation ────────────────────────────────────────────────

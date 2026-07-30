@@ -28,11 +28,18 @@ class Settings(BaseSettings):
 
     # ── OCR ────────────────────────────────────────────────────
     nvidia_api_key: str = Field(default="", description="NVIDIA API key for Nemotron OCR-v2")
-    ocr_space_api_key: str = Field(default="", description="OCR.space API key (free tier: 500/day)")
     ocr_timeout: int = Field(default=30)
     tesseract_cmd: Optional[str] = Field(
         default=None,
         description="Path to tesseract binary. Auto-detected if None."
+    )
+    # ── Developer / debug flags ────────────────────────────────
+    ocr_disable_tesseract: bool = Field(
+        default=False,
+        description=(
+            "[DEV] Set to true to skip local Tesseract OCR entirely. "
+            "Useful for testing NVIDIA Nemotron in isolation."
+        ),
     )
     poppler_path: Optional[str] = Field(
         default=None,
@@ -83,8 +90,9 @@ class Settings(BaseSettings):
         return bool(self.nvidia_api_key)
 
     @property
-    def has_ocr_space(self) -> bool:
-        return bool(self.ocr_space_api_key)
+    def tesseract_enabled(self) -> bool:
+        """False when OCR_DISABLE_TESSERACT=true (developer override)."""
+        return not self.ocr_disable_tesseract
 
     @property
     def has_api_key(self) -> bool:

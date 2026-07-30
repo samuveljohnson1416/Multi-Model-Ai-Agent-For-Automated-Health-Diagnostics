@@ -1,11 +1,11 @@
 """
 OCR service — simplified text extraction from medical documents.
 
-Replaces the 1,023-line ocr_engine.py that brute-forced 36 preprocessing
-combinations. This version uses a sane 3-step fallback chain:
+Uses a sane 3-step fallback chain:
   1. Direct text extraction (PDF text layer / JSON / CSV / TXT)
-  2. Tesseract OCR with a single good preprocessing pipeline
-  3. OCR.space API as cloud fallback
+  2. NVIDIA Nemotron OCR-v2 (cloud, high accuracy)
+  3. Tesseract OCR with a single good preprocessing pipeline
+     (can be disabled via OCR_DISABLE_TESSERACT=true for dev/testing)
 
 """
 
@@ -84,7 +84,7 @@ def _lazy_import_cv2():
 class ExtractionResult:
     """Result from text extraction."""
     text: str
-    source: str  # "pdf_text", "tesseract", "ocr_space", "direct", "csv"
+    source: str  # "pdf_text", "tesseract", "nvidia_nemotron", "direct", "csv"
     confidence: Optional[float] = None
     page_count: Optional[int] = None
 
@@ -103,9 +103,11 @@ class OCRService:
     def __init__(self):
         settings = get_settings()
         self._nvidia_api_key = settings.nvidia_api_key if settings.has_nvidia_ocr else None
-        self._ocr_space_key = settings.ocr_space_api_key if settings.has_ocr_space else None
         self._ocr_timeout = settings.ocr_timeout
-        self._tesseract_available = self._check_tesseract()
+        self._tesseract_enabled = settings.tesseract_enabled  # False when OCR_DISABLE_TESSERACT=true
+        self._tesseract_available = self._check_tesseract() if self._tesseract_enabled else False
+        if not self._tesseract_enabled:
+            logger.info("[DEV] Tesseract OCR disabled via OCR_DISABLE_TESSERACT setting")
 
     def _check_tesseract(self) -> bool:
         """Check if Tesseract is available on the system."""
@@ -167,17 +169,13 @@ class OCRService:
                 if result and len(result.text.strip()) > 20:
                     return result
 
-            # Try Tesseract fallback
+            # Try Tesseract fallback (skipped when OCR_DISABLE_TESSERACT=true)
             if self._tesseract_available:
                 result = self._extract_tesseract(file_bytes, file_type)
                 if result and len(result.text.strip()) > 20:
                     return result
-
-            # Try OCR.space API
-            if self._ocr_space_key:
-                result = await self._extract_ocr_space(file_bytes, file_type)
-                if result and len(result.text.strip()) > 20:
-                    return result
+            elif not self._tesseract_enabled:
+                logger.debug("[DEV] Tesseract step skipped (OCR_DISABLE_TESSERACT=true)")
 
         raise ValueError(
             f"Could not extract text from {file_type} file. "
@@ -228,24 +226,48 @@ class OCRService:
             pages_text = []
 
             with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                for page in pdf.pages:
+                total_pages = len(pdf.pages)
+                for page_num, page in enumerate(pdf.pages, start=1):
                     text = page.extract_text()
                     if text:
                         pages_text.append(text)
+                        # ── [EXTRACTION CHECKPOINT] Raw text lines from pdfplumber ──
+                        lines = text.splitlines()
+                        logger.debug(
+                            "[EXTRACTION CHECKPOINT] Page %d/%d: %d lines extracted",
+                            page_num, total_pages, len(lines),
+                        )
+                        for i, line in enumerate(lines, start=1):
+                            logger.debug(
+                                "[EXTRACTION CHECKPOINT] Page %d, Line %02d: %r",
+                                page_num, i, line,
+                            )
 
                     # Also try extracting tables
                     tables = page.extract_tables()
-                    for table in tables:
-                        for row in table:
+                    for t_idx, table in enumerate(tables):
+                        for r_idx, row in enumerate(table):
                             cleaned = [str(cell) if cell else "" for cell in row]
-                            pages_text.append(" | ".join(cleaned))
+                            row_text = " | ".join(cleaned)
+                            pages_text.append(row_text)
+                            # ── [EXTRACTION CHECKPOINT] Raw table rows ──
+                            logger.debug(
+                                "[EXTRACTION CHECKPOINT] Page %d, Table %d, Row %02d: %r",
+                                page_num, t_idx, r_idx, row_text,
+                            )
 
             if pages_text:
                 full_text = "\n".join(pages_text)
+                # ── [EXTRACTION CHECKPOINT] Final assembled text summary ──
+                logger.debug(
+                    "[EXTRACTION CHECKPOINT] PDF assembled: %d total lines, %d chars",
+                    full_text.count("\n") + 1,
+                    len(full_text),
+                )
                 return ExtractionResult(
                     text=full_text,
                     source="pdf_text",
-                    page_count=len(pdf.pages) if hasattr(pdf, "pages") else None,
+                    page_count=total_pages,
                 )
         except Exception as e:
             logger.warning(f"pdfplumber extraction failed: {e}")
@@ -416,60 +438,12 @@ class OCRService:
 
         return None
 
-    async def _extract_ocr_space(
-        self, file_bytes: bytes, file_type: str
-    ) -> Optional[ExtractionResult]:
-        """Extract text using OCR.space API (cloud fallback)."""
-        try:
-            content_type = {
-                "pdf": "application/pdf",
-                "png": "image/png",
-                "jpg": "image/jpeg",
-                "jpeg": "image/jpeg",
-            }.get(file_type, "application/octet-stream")
-
-            async with httpx.AsyncClient(timeout=self._ocr_timeout) as client:
-                response = await client.post(
-                    "https://api.ocr.space/parse/image",
-                    headers={"apikey": self._ocr_space_key},
-                    files={"file": (f"report.{file_type}", file_bytes, content_type)},
-                    data={
-                        "language": "eng",
-                        "isOverlayRequired": "false",
-                        "OCREngine": "2",
-                        "scale": "true",
-                    },
-                )
-                response.raise_for_status()
-
-            result = response.json()
-
-            if result.get("IsErroredOnProcessing"):
-                error_msg = result.get("ErrorMessage", ["Unknown error"])
-                logger.warning(f"OCR.space error: {error_msg}")
-                return None
-
-            parsed_results = result.get("ParsedResults", [])
-            if parsed_results:
-                text = "\n".join(
-                    r.get("ParsedText", "") for r in parsed_results
-                )
-                return ExtractionResult(
-                    text=text.strip(),
-                    source="ocr_space",
-                )
-
-        except Exception as e:
-            logger.warning(f"OCR.space extraction failed: {e}")
-
-        return None
-
     def get_status(self) -> dict:
         """Get OCR provider status for health check."""
         return {
             "name": "ocr",
-            "available": self._tesseract_available or bool(self._ocr_space_key) or bool(self._nvidia_api_key),
+            "available": self._tesseract_available or bool(self._nvidia_api_key),
             "nvidia_nemotron": bool(self._nvidia_api_key),
             "tesseract": self._tesseract_available,
-            "ocr_space": bool(self._ocr_space_key),
+            "tesseract_disabled_by_dev_flag": not self._tesseract_enabled,
         }

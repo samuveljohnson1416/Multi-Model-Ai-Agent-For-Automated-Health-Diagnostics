@@ -4,9 +4,12 @@ Chat Page — interactive Q&A about blood reports.
 
 import streamlit as st
 import api_client
+from session import init_session_state
 
+init_session_state()
 
 st.header("💬 Ask Questions About Your Report")
+
 
 # ── Check for active report ───────────────────────────────────
 if not st.session_state.get("report_id"):

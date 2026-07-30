@@ -5,10 +5,29 @@ Upload Page — file upload with user context form.
 import streamlit as st
 import api_client
 from config import MAX_FILE_SIZE_MB
+from session import init_session_state
+
+init_session_state()
 
 
 st.header("📤 Upload Blood Report")
 st.markdown("Upload your blood test report for AI-powered analysis.")
+
+# ── Active Report Check ───────────────────────────────────────
+if st.session_state.get("report_id"):
+    st.success(f"✅ An active report (`{st.session_state.report_id[:8]}...`) is already loaded in your session.")
+    st.info("👈 Navigate to **Analysis Dashboard** to view results, or **Ask Questions** to chat.")
+    
+    st.divider()
+    st.markdown("### Want to analyze a different report?")
+    if st.button("Clear and upload new report", type="secondary"):
+        st.session_state.report_id = None
+        st.session_state.analysis_result = None
+        st.session_state.chat_history = []
+        st.rerun()
+        
+    st.stop() # Stop rendering the rest of the page (the upload form)
+
 
 # ── User Context Form ─────────────────────────────────────────
 with st.expander("👤 Patient Information (optional — improves accuracy)", expanded=False):
