@@ -1,22 +1,27 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# render.yaml — Render Infrastructure Blueprint
+# render.yaml — Render Blueprint
 #
-# Defines two web services:
-#   1. health-diagnostics-api   → FastAPI backend
-#   2. health-diagnostics-ui    → Streamlit frontend
+# Two web services, each built from its own Dockerfile:
+#   1. health-diagnostics-api   → FastAPI backend   (Dockerfile.backend)
+#   2. health-diagnostics-ui    → Streamlit frontend (Dockerfile.frontend)
 #
-# Deploy by pushing this repo to Render via "New Blueprint Instance".
-# Secrets (API keys) must be set manually in Render Dashboard after deploy.
+# Deploy: push this repo to GitHub, then in Render choose
+# "New +" → "Blueprint" and point it at the repo.
+#
+# `sync: false` variables are secrets — Render will prompt for them, or you set
+# them later under each service's Environment tab. The app runs without any of
+# them (rule-based fallback, in-memory storage), but AI features need a key.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
 
-  # ── Backend: FastAPI ────────────────────────────────────────────────────────
+  # ── Backend: FastAPI ───────────────────────────────────────────────────────
   - type: web
     name: health-diagnostics-api
     runtime: docker
     dockerfilePath: ./Dockerfile.backend
     plan: free
+    healthCheckPath: /api/health
 
     envVars:
       - key: API_HOST
@@ -24,26 +29,41 @@ services:
       - key: DEBUG
         value: "false"
       - key: CORS_ORIGINS
-        # After deploying the frontend, update this to your frontend URL:
-        # https://health-diagnostics-ui.onrender.com
+        # Browser CORS only matters if something calls the API directly from a
+        # browser. The Streamlit frontend calls it server-side, so "*" is safe.
         value: "*"
 
-      # ── Set these as SECRETS in the Render Dashboard ──────────────────────
-      # Dashboard → Service → Environment → Add Secret File / Environment Variable
+      # ── Models (change here if a provider retires a model) ────────────────
+      - key: GROQ_MODEL
+        value: "openai/gpt-oss-20b"
+      - key: GROQ_RISK_MODEL
+        value: "openai/gpt-oss-120b"
+      - key: GEMINI_MODEL
+        value: "gemini-flash-latest"
+
+      # ── Agent → provider routing ─────────────────────────────────────────
+      # Default the two normally-Gemini agents to Groq. If you have a working
+      # Gemini key, delete these two lines to use Gemini for them.
+      - key: AGENT_EXTRACTION_PROVIDER
+        value: "groq"
+      - key: AGENT_NUTRITION_PROVIDER
+        value: "groq"
+
+      # ── Secrets (set in the Render dashboard) ────────────────────────────
       - key: GROQ_API_KEY
-        sync: false           # sync: false = must be set manually in dashboard
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
-      - key: NVIDIA_API_KEY
+      - key: NVIDIA_API_KEY          # optional — better OCR on poor scans
         sync: false
-      - key: SUPABASE_URL
+      - key: SUPABASE_URL            # optional — persistent storage
         sync: false
       - key: SUPABASE_KEY
         sync: false
-      - key: API_KEY
-        sync: false           # Optional: locks down API endpoints
+      - key: API_KEY                 # optional — if set, every /api/* call needs X-API-Key
+        sync: false
 
-  # ── Frontend: Streamlit ─────────────────────────────────────────────────────
+  # ── Frontend: Streamlit ───────────────────────────────────────────────────
   - type: web
     name: health-diagnostics-ui
     runtime: docker
@@ -52,10 +72,10 @@ services:
 
     envVars:
       - key: API_BASE_URL
-        # After backend deploys, set this to your backend URL:
-        # https://health-diagnostics-api.onrender.com/api
+        # Render can't template this. After the backend's first deploy, copy its
+        # URL here (Environment tab) and redeploy, e.g.:
+        #   https://health-diagnostics-api.onrender.com/api
         value: "https://health-diagnostics-api.onrender.com/api"
 
-      # ── Set these as SECRETS in the Render Dashboard ──────────────────────
-      - key: API_KEY
-        sync: false           # Must match the backend API_KEY if set
+      - key: API_KEY                 # must match the backend's API_KEY (if you set one)
+        sync: false

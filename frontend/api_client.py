@@ -9,11 +9,12 @@ import httpx
 import logging
 from typing import Optional, Dict, Any, List
 
-from config import API_BASE_URL
+from config import API_BASE_URL, API_KEY
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 60.0
+_HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 
 
 def analyze_report(
@@ -44,6 +45,7 @@ def analyze_report(
             f"{API_BASE_URL}/analyze",
             files=files,
             data=data,
+            headers=_HEADERS,
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
@@ -65,6 +67,7 @@ def get_report(report_id: str) -> Optional[Dict[str, Any]]:
     try:
         response = httpx.get(
             f"{API_BASE_URL}/reports/{report_id}",
+            headers=_HEADERS,
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
@@ -80,6 +83,7 @@ def get_user_reports(user_id: str) -> List[Dict[str, Any]]:
         response = httpx.get(
             f"{API_BASE_URL}/reports",
             params={"user_id": user_id},
+            headers=_HEADERS,
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
@@ -104,6 +108,7 @@ def send_chat_message(
                 "message": message,
                 "user_id": user_id,
             },
+            headers=_HEADERS,
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
@@ -116,7 +121,7 @@ def send_chat_message(
 def get_recent_reports() -> List[Dict[str, Any]]:
     """Recent analysis runs (for the internal /agent-review page)."""
     try:
-        response = httpx.get(f"{API_BASE_URL}/debug/recent-reports", timeout=_TIMEOUT)
+        response = httpx.get(f"{API_BASE_URL}/debug/recent-reports", headers=_HEADERS, timeout=_TIMEOUT)
         response.raise_for_status()
         return response.json().get("reports", [])
     except Exception as e:
@@ -127,7 +132,7 @@ def get_recent_reports() -> List[Dict[str, Any]]:
 def get_health() -> Optional[Dict[str, Any]]:
     """Check API health status."""
     try:
-        response = httpx.get(f"{API_BASE_URL}/health", timeout=5.0)
+        response = httpx.get(f"{API_BASE_URL}/health", headers=_HEADERS, timeout=5.0)
         response.raise_for_status()
         return response.json()
     except Exception:

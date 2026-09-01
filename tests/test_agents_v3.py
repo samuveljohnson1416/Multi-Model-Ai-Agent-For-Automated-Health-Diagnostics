@@ -321,6 +321,35 @@ class TestWiredAPIOffline:
         assert r2.json()["message"]
 
 
+class TestApiKeyGuard:
+    """When API_KEY is set (as in a locked-down deployment), /api/* needs the
+    header but the platform health check must still pass."""
+
+    @pytest.fixture
+    def client(self, monkeypatch):
+        from fastapi.testclient import TestClient
+        from backend import config
+        for var in ("GROQ_API_KEY", "GEMINI_API_KEY", "NVIDIA_API_KEY",
+                    "SUPABASE_URL", "SUPABASE_KEY"):
+            monkeypatch.setenv(var, "")
+        monkeypatch.setenv("API_KEY", "s3cr3t")
+        config.get_settings.cache_clear()
+        import backend.main as m
+        with TestClient(m.create_app()) as c:
+            yield c
+        config.get_settings.cache_clear()
+
+    def test_health_is_public(self, client):
+        assert client.get("/api/health").status_code == 200
+
+    def test_protected_route_rejects_missing_key(self, client):
+        assert client.get("/api/reports?user_id=x").status_code == 401
+
+    def test_protected_route_accepts_correct_key(self, client):
+        r = client.get("/api/reports?user_id=x", headers={"X-API-Key": "s3cr3t"})
+        assert r.status_code == 200
+
+
 @requires_groq
 class TestWiredAPILive:
     def test_analyze_produces_llm_agent_output(self, client_live):

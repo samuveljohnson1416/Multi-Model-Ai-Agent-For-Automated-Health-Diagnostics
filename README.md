@@ -72,18 +72,27 @@ streamlit run app.py
 
 ### Production / Render Deployment
 
-This project is configured to deploy seamlessly on [Render](https://render.com) using the provided Blueprint.
+The repo ships a Render Blueprint (`render.yaml`) that creates two services from
+`Dockerfile.backend` and `Dockerfile.frontend`.
 
 **To deploy:**
 1. Push this repository to GitHub.
-2. In the Render Dashboard, click **New > Blueprint Instance**.
-3. Connect your repository. Render will automatically detect the `render.yaml` file and create two separate Web Services (Frontend and Backend).
-4. Go to the Environment section for each service in the Render Dashboard to fill in your API keys (Groq, Supabase, etc.).
+2. In Render, choose **New + → Blueprint** and select the repo. Render reads
+   `render.yaml` and creates `health-diagnostics-api` and `health-diagnostics-ui`.
+3. When prompted, provide the secret values you want. `GROQ_API_KEY` is the one
+   that matters; everything else is optional (the app runs rule-only without it).
+4. After the **backend** finishes its first deploy, copy its URL, then on the
+   **frontend** service set `API_BASE_URL` to `https://<backend-url>/api` and
+   redeploy the frontend.
+5. If you set `API_KEY` on the backend, set the **same** value on the frontend.
 
-**Why Render?**
-- True microservice architecture: FastAPI and Streamlit run and scale independently.
-- Managed routing via `API_BASE_URL`.
-- Clean separation of concerns with `Dockerfile.backend` and `Dockerfile.frontend`.
+Notes:
+- The free plan sleeps idle services; the first request after a pause takes
+  ~30–60 s while the container wakes.
+- The backend health check is `/api/health` (stays public even with `API_KEY` set).
+- The two Gemini-preferred agents are routed to Groq by default
+  (`AGENT_EXTRACTION_PROVIDER` / `AGENT_NUTRITION_PROVIDER` in `render.yaml`);
+  remove those lines if you have a working Gemini key.
 
 ## Supported File Formats
 
