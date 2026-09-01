@@ -44,8 +44,9 @@ Rules:
 - Explain which specific parameters drive each risk rating
 - Identify metabolic syndrome indicators if present
 - Note any concerning trends or combinations
-- Keep response under 400 words
-- Use clear markdown formatting
+- Keep response under 300 words
+- Write short paragraphs and bullet points — do NOT use markdown tables
+- Use at most one level of headings (##)
 - Always recommend professional medical evaluation"""
 
     async def _execute_llm(self, context: AgentContext) -> str:
@@ -89,21 +90,18 @@ Rules:
 {risk_info}
 {context_info}
 
-Analyze risk by organ system:
-1. **Cardiovascular Risk** — cholesterol, triglycerides, HDL/LDL ratios
-2. **Hepatic Risk** — ALT, AST, ALP, bilirubin, albumin
-3. **Renal Risk** — creatinine, BUN, uric acid
-4. **Hematologic Risk** — Hb, RBC, WBC, platelets, indices
-5. **Metabolic Risk** — glucose, HbA1c, metabolic syndrome screening
-6. **Overall Assessment** — combined risk rating with key actionable points
-
-For each system, provide: risk level, driving parameters, and brief explanation."""
+Go through the body systems that these results touch on — cardiovascular,
+liver, kidney, blood, and metabolic. For each one that is relevant, give it a
+short heading, state a risk level (low / moderate / high / needs attention),
+name the values driving that rating, and explain it in a sentence or two.
+Finish with a brief overall assessment and the most important actions.
+Use short paragraphs and bullets, not tables."""
 
         return await self._provider.generate(
             prompt=prompt,
             system_prompt=self.system_prompt,
             temperature=0.1,
-            max_tokens=1024,
+            max_tokens=700,
         )
 
     def _execute_fallback(self, context: AgentContext) -> str:

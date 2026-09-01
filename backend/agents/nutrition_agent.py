@@ -42,9 +42,10 @@ Rules:
 - Provide lifestyle recommendations (exercise, sleep, stress management)
 - Be specific — name actual foods, not just food groups
 - Organize by: Foods to Include, Foods to Avoid, Supplements, Lifestyle
-- Keep response under 400 words
-- Always note that dietary changes should be discussed with a healthcare provider
-- Use clear markdown formatting"""
+- Keep response under 300 words
+- Write short bullet points — do NOT use markdown tables
+- Use at most one level of headings (##)
+- Always note that dietary changes should be discussed with a healthcare provider"""
 
     async def _execute_llm(self, context: AgentContext) -> str:
         """Use LLM for personalized nutrition advice."""
@@ -79,18 +80,16 @@ Provide general wellness nutrition and lifestyle recommendations for maintaining
 {chr(10).join(abnormal_lines)}
 {context_info}
 
-Provide:
-1. **🥬 Foods to Include** — specific foods that may help normalize these values
-2. **🚫 Foods to Avoid** — foods that could worsen these values
-3. **💊 Supplements to Discuss** — vitamins/minerals to discuss with a doctor
-4. **🏃 Lifestyle Changes** — exercise, sleep, and habits that may help
-5. **⚠️ Important Notes** — any dietary cautions specific to these results"""
+Use these four short sections, each a bullet list (no tables, no emoji):
+Foods to include, Foods to limit, Supplements to discuss with a doctor,
+Lifestyle changes. Name specific foods. End with one line noting that any
+changes should be discussed with a healthcare provider."""
 
         return await self._provider.generate(
             prompt=prompt,
             system_prompt=self.system_prompt,
             temperature=0.2,  # Slightly higher for creative recommendations
-            max_tokens=1024,
+            max_tokens=700,
         )
 
     def _execute_fallback(self, context: AgentContext) -> str:

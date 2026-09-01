@@ -152,13 +152,14 @@ class CoordinatorAgent:
             f"{total_ms}ms total wall-clock"
         )
 
-        return self._merge_results(all_results, agents_used, total_ms)
+        return self._merge_results(all_results, agents_used, total_ms, context)
 
     def _merge_results(
         self,
         results: List[AgentResult],
         agents_used: List[str],
         total_ms: int,
+        context: AgentContext,
     ) -> CoordinatorResult:
         """Merge individual agent results into a unified output."""
         diagnosis_insights = None
@@ -176,38 +177,45 @@ class CoordinatorAgent:
             elif r.agent_name == "Nutrition Agent" and r.status != "error":
                 nutrition_plan = r.content
 
-        # Build executive summary from successful agents
-        executive_summary = self._build_executive_summary(results)
-
         return CoordinatorResult(
             agent_results=results,
             diagnosis_insights=diagnosis_insights,
             enhanced_risk=enhanced_risk,
             nutrition_plan=nutrition_plan,
-            executive_summary=executive_summary,
+            executive_summary=self._build_executive_summary(context),
             agents_used=list(set(agents_used)),
             total_execution_time_ms=total_ms,
         )
 
-    def _build_executive_summary(self, results: List[AgentResult]) -> str:
-        """Build a brief unified summary from all agent outputs."""
-        successful = [r for r in results if r.status in ("success", "fallback")]
+    def _build_executive_summary(self, context: AgentContext) -> str:
+        """
+        A short, plain-language overview built from the validated data —
+        deterministic, no model text spliced in.
+        """
+        total = len(context.parameters)
+        abnormal = context.abnormal_parameters
+        critical = [p for p in abnormal if getattr(p.status, "value", p.status) == "CRITICAL"]
 
-        if not successful:
-            return "Multi-agent analysis could not be completed. Please review the individual parameter results."
+        if not abnormal:
+            return f"All {total} values are within their normal reference ranges."
 
-        summary_parts = []
-        for r in successful:
-            if r.agent_name == "Extraction Agent":
-                continue  # Skip extraction from summary
-            # Take first 2 sentences from each agent's content
-            sentences = r.content.split(". ")[:2]
-            brief = ". ".join(sentences)
-            if not brief.endswith("."):
-                brief += "."
-            summary_parts.append(f"**{r.agent_name}:** {brief}")
+        parts = [
+            f"{len(abnormal)} of {total} values fall outside the normal range"
+        ]
+        if critical:
+            names = ", ".join(p.name for p in critical)
+            parts.append(f", including {len(critical)} well outside the range ({names})")
+        parts.append(".")
 
-        if summary_parts:
-            return "\n\n".join(summary_parts)
+        if context.risk_assessment and context.risk_assessment.risk_level:
+            level = context.risk_assessment.risk_level.lower()
+            phrasing = {
+                "low": "The overall picture looks low-risk",
+                "medium": "The overall picture warrants a routine follow-up",
+                "high": "Several results together suggest this needs medical attention",
+                "critical": "Some results are significantly out of range and should be reviewed by a doctor soon",
+            }.get(level)
+            if phrasing:
+                parts.append(f" {phrasing}.")
 
-        return "Analysis complete. Please review the detailed agent reports below."
+        return "".join(parts)

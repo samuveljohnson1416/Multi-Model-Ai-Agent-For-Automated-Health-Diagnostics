@@ -1,101 +1,82 @@
-"""
-Upload Page — file upload with user context form.
-"""
+"""New analysis — upload a report and run it."""
 
 # pyrefly: ignore [missing-import]
 import streamlit as st
-import api_client
-from config import MAX_FILE_SIZE_MB
-from session import init_session_state
 
+import api_client
+from config import MAX_FILE_SIZE_MB, SUPPORTED_TYPES
+from session import init_session_state
+from theme import apply_chrome
+
+apply_chrome()
 init_session_state()
 
+st.title("New analysis")
 
-st.header("📤 Upload Blood Report")
-st.markdown("Upload your blood test report for AI-powered analysis.")
-
-# ── Active Report Check ───────────────────────────────────────
+# A report is already open ------------------------------------------------
 if st.session_state.get("report_id"):
-    st.success(f"✅ An active report (`{st.session_state.report_id[:8]}...`) is already loaded in your session.")
-    st.info("👈 Navigate to **Analysis Dashboard** to view results, or **Ask Questions** to chat.")
-    
-    st.divider()
-    st.markdown("### Want to analyze a different report?")
-    if st.button("Clear and upload new report", type="secondary"):
+    st.write(f"You have a report open: **{st.session_state.get('report_name', 'current report')}**")
+    c1, c2 = st.columns(2)
+    if c1.button("View results", use_container_width=True, type="primary"):
+        st.switch_page("pages/dashboard.py")
+    if c2.button("Start a new one", use_container_width=True):
         st.session_state.report_id = None
+        st.session_state.report_name = None
         st.session_state.analysis_result = None
         st.session_state.chat_history = []
         st.rerun()
-        
-    st.stop() # Stop rendering the rest of the page (the upload form)
+    st.stop()
 
-
-# ── User Context Form ─────────────────────────────────────────
-with st.expander("👤 Patient Information (optional — improves accuracy)", expanded=False):
-    col1, col2 = st.columns(2)
-    with col1:
-        age = st.number_input("Age", min_value=0, max_value=150, value=None, step=1)
-    with col2:
-        gender = st.selectbox("Gender", options=[None, "male", "female", "other"], index=0)
-
-# ── File Upload ───────────────────────────────────────────────
-uploaded_file = st.file_uploader(
-    "Choose a blood report file",
-    type=["pdf", "png", "jpg", "jpeg", "json", "csv", "txt"],
-    help=f"Max file size: {MAX_FILE_SIZE_MB}MB. Supported: PDF, images, JSON, CSV, TXT.",
+# Upload form -----------------------------------------------------------
+st.write(
+    "Upload a blood test report. Digital or scanned PDFs, photos, and "
+    "data files (CSV, JSON) all work."
 )
 
-# ── Analyze Button ────────────────────────────────────────────
-if uploaded_file is not None:
-    file_bytes = uploaded_file.read()
-    file_size_mb = len(file_bytes) / (1024 * 1024)
+with st.expander("Add age and sex for more accurate reference ranges"):
+    c1, c2 = st.columns(2)
+    age = c1.number_input("Age", min_value=0, max_value=120, value=None, step=1, placeholder="—")
+    gender = c2.selectbox("Sex", options=[None, "male", "female", "other"],
+                          format_func=lambda x: "—" if x is None else x.capitalize())
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("File", uploaded_file.name)
-    with col2:
-        st.metric("Size", f"{file_size_mb:.1f} MB")
-    with col3:
-        st.metric("Type", uploaded_file.name.rsplit(".", 1)[-1].upper())
+uploaded_file = st.file_uploader(
+    "Report file",
+    type=SUPPORTED_TYPES,
+    label_visibility="collapsed",
+    help=f"Up to {MAX_FILE_SIZE_MB} MB.",
+)
 
-    if file_size_mb > MAX_FILE_SIZE_MB:
-        st.error(f"File too large ({file_size_mb:.1f}MB). Max: {MAX_FILE_SIZE_MB}MB.")
-    else:
-        if st.button("🔬 Analyze Report", type="primary", use_container_width=True):
-            with st.spinner("Analyzing your blood report... This may take 10-30 seconds."):
-                result = api_client.analyze_report(
-                    file_content=file_bytes,
-                    filename=uploaded_file.name,
-                    user_id=st.session_state.user_id,
-                    age=age,
-                    gender=gender,
-                )
+if uploaded_file is None:
+    st.stop()
 
-            if result:
-                st.session_state.report_id = result.get("report_id")
-                st.session_state.analysis_result = result.get("analysis")
-                st.session_state.chat_history = []
+file_bytes = uploaded_file.read()
+size_mb = len(file_bytes) / (1024 * 1024)
 
-                st.success(f"✅ Analysis complete! Report ID: `{st.session_state.report_id[:8]}...`")
-                st.info("👈 Navigate to **Analysis Dashboard** to view results, or **Ask Questions** to chat.")
-            else:
-                st.error(
-                    "❌ Analysis failed. Please check:\n"
-                    "1. Is the backend running? (`uvicorn backend.main:app`)\n"
-                    "2. Is the file a valid blood report?\n"
-                    "3. Check terminal for error details."
-                )
-else:
-    # Show helpful info when no file is uploaded
-    st.divider()
-    st.markdown("""
-    ### How it works
-    1. **Upload** your blood test report (PDF, image, or structured data)
-    2. **OCR extracts** text from the document
-    3. **AI parses** blood parameters (Hemoglobin, RBC, WBC, etc.)
-    4. **Validates** against age/gender-adjusted reference ranges
-    5. **Calculates** risk scores and generates recommendations
-    6. **Chat** with AI about your results
+if size_mb > MAX_FILE_SIZE_MB:
+    st.error(f"That file is {size_mb:.1f} MB. The limit is {MAX_FILE_SIZE_MB} MB.")
+    st.stop()
 
-    > ⚠️ This tool is for informational purposes only. Always consult a healthcare provider.
-    """)
+st.caption(f"{uploaded_file.name} · {size_mb:.1f} MB")
+
+if st.button("Analyze", type="primary", use_container_width=True):
+    with st.spinner("Reading the report and checking each value against its reference range…"):
+        result = api_client.analyze_report(
+            file_content=file_bytes,
+            filename=uploaded_file.name,
+            user_id=st.session_state.user_id,
+            age=age,
+            gender=gender,
+        )
+
+    if not result:
+        st.error(
+            "We couldn't analyze that file. Make sure it's a readable blood "
+            "test report with numeric results, then try again."
+        )
+        st.stop()
+
+    st.session_state.report_id = result.get("report_id")
+    st.session_state.report_name = uploaded_file.name
+    st.session_state.analysis_result = result.get("analysis")
+    st.session_state.chat_history = []
+    st.switch_page("pages/dashboard.py")

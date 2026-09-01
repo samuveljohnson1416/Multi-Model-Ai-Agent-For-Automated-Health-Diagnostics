@@ -45,8 +45,9 @@ Rules:
 - Prioritize the most clinically significant findings
 - Group related abnormalities together
 - Use simple language the patient can understand
-- Format your response with clear markdown sections
-- Keep response under 400 words"""
+- Write short paragraphs and bullet points — do NOT use markdown tables
+- Use at most one level of headings (##)
+- Keep response under 300 words"""
 
     async def _execute_llm(self, context: AgentContext) -> str:
         """Use LLM to generate clinical interpretation."""
@@ -96,17 +97,17 @@ Rules:
 ## Normal Values (for context)
 {', '.join(normal_summary[:10]) if normal_summary else 'N/A'}
 
-Provide:
-1. **Key Findings** — most important clinical observations (2-3 sentences)
-2. **Pattern Analysis** — identify any multi-parameter patterns (e.g., anemia, infection, metabolic issues)
-3. **Possible Conditions** — conditions these results may indicate
-4. **Recommended Follow-up** — specific tests or actions to consider"""
+Write the interpretation as flowing prose with short bullet lists — no tables. Cover, in this order:
+- The two or three most important things these results show (a sentence or two).
+- Any patterns across several values (e.g. an anemia picture, signs of infection, a metabolic cluster) and what each pattern may point to.
+- What a clinician might check next.
+Lead with the single most important finding."""
 
         return await self._provider.generate(
             prompt=prompt,
             system_prompt=self.system_prompt,
             temperature=0.1,
-            max_tokens=1024,
+            max_tokens=700,
         )
 
     def _execute_fallback(self, context: AgentContext) -> str:
