@@ -17,7 +17,11 @@ if not st.session_state.get("report_id"):
     st.stop()
 
 report_id = st.session_state.report_id
-st.caption(f"Chatting about report: `{report_id[:8]}...`")
+st.caption(
+    f"Chatting about report: `{report_id[:8]}...` — answers use the "
+    f"Conversational Agent, which can reference the Diagnosis, Risk and "
+    f"Nutrition agents' findings."
+)
 
 # ── Chat History Display ──────────────────────────────────────
 for msg in st.session_state.chat_history:

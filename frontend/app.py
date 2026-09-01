@@ -29,10 +29,11 @@ init_session_state()
 # ── Navigation ────────────────────────────────────────────────
 upload_page = st.Page("pages/upload.py", title="Upload Report", icon="📤")
 dashboard_page = st.Page("pages/dashboard.py", title="Analysis Dashboard", icon="📊")
+agent_insights_page = st.Page("pages/agent_insights.py", title="Agent Insights", icon="🧠")
 chat_page = st.Page("pages/chat.py", title="Ask Questions", icon="💬")
 history_page = st.Page("pages/history.py", title="Report History", icon="📋")
 
-pg = st.navigation([upload_page, dashboard_page, chat_page, history_page])
+pg = st.navigation([upload_page, dashboard_page, agent_insights_page, chat_page, history_page])
 
 
 # ── Sidebar ───────────────────────────────────────────────────
@@ -47,7 +48,7 @@ with st.sidebar:
         st.info("No report loaded. Upload one to get started.")
 
     st.divider()
-    st.caption("v2.0.0 · Powered by Groq AI")
+    st.caption("v3.0.0 · Multi-agent · Groq + Gemini")
 
 
 # ── Run Page ──────────────────────────────────────────────────

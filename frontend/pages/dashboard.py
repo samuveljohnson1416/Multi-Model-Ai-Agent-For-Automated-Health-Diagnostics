@@ -25,6 +25,11 @@ summary = result.get("summary", {})
 risks = result.get("risks", {})
 recommendations = result.get("recommendations", [])
 llm_insights = result.get("llm_insights")
+executive_summary = result.get("executive_summary")
+diagnosis_insights = result.get("diagnosis_insights")
+enhanced_risk = result.get("enhanced_risk") or {}
+nutrition_plan = result.get("nutrition_plan")
+agents_used = result.get("agents_used", [])
 
 # ── Summary Metrics ───────────────────────────────────────────
 st.subheader("Summary")
@@ -142,10 +147,32 @@ if warnings:
     for warning in warnings:
         st.warning(warning)
 
-# ── LLM Insights ──────────────────────────────────────────────
-if llm_insights:
+# ── Multi-Agent Insights ──────────────────────────────────────
+if executive_summary or diagnosis_insights or nutrition_plan or llm_insights:
     st.subheader("🤖 AI Insights")
-    st.markdown(llm_insights)
+
+    if agents_used:
+        st.caption("Models used: " + ", ".join(agents_used))
+
+    if executive_summary:
+        st.markdown("#### Executive Summary")
+        st.markdown(executive_summary)
+    elif llm_insights:
+        st.markdown(llm_insights)
+
+    if diagnosis_insights:
+        with st.expander("🔬 Diagnosis Agent — clinical interpretation", expanded=False):
+            st.markdown(diagnosis_insights)
+
+    if enhanced_risk.get("content"):
+        with st.expander("⚠️ Risk Agent — organ-system risk", expanded=False):
+            st.markdown(enhanced_risk["content"])
+
+    if nutrition_plan:
+        with st.expander("🥗 Nutrition Agent — diet & lifestyle", expanded=False):
+            st.markdown(nutrition_plan)
+
+    st.caption("See the **Agent Insights** page for the full per-agent breakdown.")
 
 # ── Recommendations ───────────────────────────────────────────
 if recommendations:
