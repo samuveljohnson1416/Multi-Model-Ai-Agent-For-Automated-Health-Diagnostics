@@ -12,8 +12,9 @@ python-multipart>=0.0.6
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 
-# ── LLM (Groq) ────────────────────────────────────────────
+# ── LLM (Groq + Google Gemini) ────────────────────────────
 groq>=0.4.0
+google-genai>=0.3.0
 
 # ── OCR & Image Processing ────────────────────────────────
 pytesseract>=0.3.10

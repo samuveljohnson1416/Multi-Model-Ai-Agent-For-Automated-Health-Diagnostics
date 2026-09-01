@@ -16,7 +16,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from fastapi.responses import JSONResponse
 
-from .config import get_settings
+from .config import get_settings, Settings
 from .db.client import init_supabase, close_supabase
 from .db.repository import ReportRepository
 from .services.ocr_service import OCRService
@@ -25,6 +25,15 @@ from .services.validator_service import ValidatorService
 from .services.llm_service import LLMService
 from .services.analysis_service import AnalysisService
 from .services.chat_service import ChatService
+from .services.llm import ProviderRegistry, GroqProvider, GeminiProvider
+from .agents import (
+    ExtractionAgent,
+    DiagnosisAgent,
+    RiskAgent,
+    NutritionAgent,
+    ConversationalAgent,
+    CoordinatorAgent,
+)
 from .routes import analyze, reports, chat, health
 from .middleware.auth import APIKeyMiddleware
 
@@ -40,13 +49,48 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 
-# ── Application state (set during lifespan) ───────────────────
-class AppState:
-    """Container for shared services — injected via app.state."""
-    analysis_service: AnalysisService
-    chat_service: ChatService
-    llm_service: LLMService
-    repository: ReportRepository
+# ── Provider / agent wiring ───────────────────────────────────
+def build_registry(settings: Settings) -> ProviderRegistry:
+    """Construct the LLM provider registry from configured API keys."""
+    groq = GroqProvider(
+        api_key=settings.groq_api_key,
+        model=settings.groq_model,
+        temperature=settings.groq_temperature,
+        max_tokens=settings.groq_max_tokens,
+        timeout=settings.groq_timeout,
+    ) if settings.has_groq else None
+
+    gemini = GeminiProvider(
+        api_key=settings.gemini_api_key,
+        model=settings.gemini_model,
+        temperature=settings.gemini_temperature,
+        max_tokens=settings.gemini_max_tokens,
+    ) if settings.has_gemini else None
+
+    return ProviderRegistry(groq_provider=groq, gemini_provider=gemini)
+
+
+def build_coordinator(registry: ProviderRegistry, settings: Settings) -> CoordinatorAgent:
+    """Wire the specialist agents with their preferred providers."""
+    # Each agent uses its preferred provider, then falls back to any other
+    # configured provider, then (inside the agent) to rule-based logic.
+    def pick(preferred: str):
+        return registry.get_provider(preferred, "groq", "gemini")
+
+    # Risk Agent prefers a larger Groq model when Groq is available.
+    groq = registry.get_groq()
+    risk_provider = (
+        groq.with_model(settings.groq_risk_model)
+        if groq is not None and settings.agent_risk_provider == "groq"
+        else pick(settings.agent_risk_provider)
+    )
+
+    return CoordinatorAgent(
+        extraction_agent=ExtractionAgent(pick(settings.agent_extraction_provider)),
+        diagnosis_agent=DiagnosisAgent(pick(settings.agent_diagnosis_provider)),
+        risk_agent=RiskAgent(risk_provider),
+        nutrition_agent=NutritionAgent(pick(settings.agent_nutrition_provider)),
+    )
 
 
 # ── Lifespan ──────────────────────────────────────────────────
@@ -55,29 +99,36 @@ async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     settings = get_settings()
     logger.info("=" * 60)
-    logger.info("Starting Health Diagnostics API v2.0")
+    logger.info("Starting Health Diagnostics API v3.0")
     logger.info("=" * 60)
 
     # Initialize services
     init_supabase()
 
+    registry = build_registry(settings)
+    llm = LLMService(registry)
+
     ocr = OCRService()
     parser = ParserService()
     validator = ValidatorService()
-    llm = LLMService()
-    analysis = AnalysisService(ocr, parser, validator, llm)
+
+    coordinator = build_coordinator(registry, settings)
+    conversational = ConversationalAgent(registry.get_provider(settings.agent_chat_provider))
+
+    analysis = AnalysisService(ocr, parser, validator, llm, coordinator=coordinator)
     chat_svc = ChatService(llm)
     repo = ReportRepository()
 
     # Attach to app state
     app.state.analysis_service = analysis
     app.state.chat_service = chat_svc
+    app.state.conversational_agent = conversational
     app.state.llm_service = llm
     app.state.repository = repo
     app.state.ocr_service = ocr
     app.state.limiter = limiter
 
-    logger.info(f"Groq LLM: {'✓ ' + llm.model_name if llm.available else '✗ not configured'}")
+    logger.info(f"LLM providers: {registry.list_available() or '✗ none (rule-based fallback)'}")
     logger.info(f"Supabase: {'✓ connected' if settings.has_supabase else '✗ using in-memory'}")
     tesseract_status = "✓" if ocr._tesseract_available else ("✗ [DEV: disabled]" if not ocr._tesseract_enabled else "✗ not found")
     logger.info(f"OCR: nvidia_nemotron={'✓' if ocr._nvidia_api_key else '✗'}, tesseract={tesseract_status}")
@@ -100,7 +151,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Health Diagnostics API",
         description="Multi-Model AI Agent for Blood Report Analysis",
-        version="2.0.0",
+        version="3.0.0",
         lifespan=lifespan,
         # Disable interactive docs in production (Finding 8)
         docs_url="/docs" if settings.debug else None,

@@ -6,7 +6,7 @@ Replaces orchestrator.py + phase1 + phase2 with one clean async pipeline:
 """
 
 import logging
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from ..models.report import AnalysisResult, RiskAssessment, UserContext
 from ..models.blood_parameter import BloodParameter, ParameterStatus
@@ -16,6 +16,9 @@ from .ocr_service import OCRService
 from .parser_service import ParserService
 from .validator_service import ValidatorService
 from .llm_service import LLMService
+
+if TYPE_CHECKING:
+    from ..agents import CoordinatorAgent
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +55,13 @@ class AnalysisService:
         parser_service: ParserService,
         validator_service: ValidatorService,
         llm_service: LLMService,
+        coordinator: Optional["CoordinatorAgent"] = None,
     ):
         self.ocr = ocr_service
         self.parser = parser_service
         self.validator = validator_service
         self.llm = llm_service
+        self.coordinator = coordinator
 
     async def analyze(
         self,
@@ -169,33 +174,57 @@ class AnalysisService:
             framingham_risk=framingham,
         )
 
-        # ── Step 5: LLM insights (non-blocking) ──────────────
-        logger.info("Step 5: Generating LLM insights")
-        llm_insights = None
-        if self.llm.available and abnormal:
-            try:
-                llm_insights = await self._generate_insights(
-                    parameters, abnormal, risk, user_context
-                )
-            except Exception as e:
-                logger.warning(f"LLM insights failed (non-critical): {e}")
-
-        # ── Build result ──────────────────────────────────────
+        # ── Build result skeleton ─────────────────────────────
         summary = interpretation["summary"]
         if lipid_ratios:
             summary["lipid_ratios"] = lipid_ratios
 
         recommendations = interpretation["recommendations"]
 
-        return AnalysisResult(
+        result = AnalysisResult(
             parameters=parameters,
             summary=summary,
             abnormal_parameters=abnormal,
             risks=risk,
             recommendations=recommendations,
-            llm_insights=llm_insights,
             warnings=warnings,
         )
+
+        # ── Step 5: Multi-agent analysis (non-blocking) ──────
+        if self.coordinator is not None:
+            logger.info("Step 5: Running multi-agent analysis (Coordinator)")
+            try:
+                coord = await self.coordinator.orchestrate(
+                    parameters=parameters,
+                    abnormal_parameters=abnormal,
+                    raw_text=extraction.text,
+                    user_context=user_context,
+                    risk_assessment=risk,
+                    summary=summary,
+                    recommendations=recommendations,
+                )
+                result.executive_summary = coord.executive_summary
+                result.diagnosis_insights = coord.diagnosis_insights
+                result.enhanced_risk = coord.enhanced_risk
+                result.nutrition_plan = coord.nutrition_plan
+                result.agents_used = coord.agents_used
+                result.agent_reports = [r.model_dump(mode="json") for r in coord.agent_results]
+                # Legacy field — keep the dashboard's "AI Insights" section populated
+                result.llm_insights = coord.executive_summary or coord.diagnosis_insights
+            except Exception as e:
+                logger.warning(f"Multi-agent analysis failed (non-critical): {e}")
+        elif self.llm.available and abnormal:
+            logger.info("Step 5: Generating LLM insights (legacy single-provider path)")
+            try:
+                insights = await self._generate_insights(
+                    parameters, abnormal, risk, user_context
+                )
+                result.llm_insights = insights
+                result.executive_summary = insights
+            except Exception as e:
+                logger.warning(f"LLM insights failed (non-critical): {e}")
+
+        return result
 
     async def _generate_insights(
         self,
