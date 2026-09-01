@@ -10,7 +10,6 @@ Uses pytest. Tests are organized by layer:
 # pyrefly: ignore [missing-import]
 import pytest
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
 
 # ── Domain Tests ──────────────────────────────────────────────
 
