@@ -32,9 +32,9 @@ services:
       # Dashboard → Service → Environment → Add Secret File / Environment Variable
       - key: GROQ_API_KEY
         sync: false           # sync: false = must be set manually in dashboard
-      - key: NVIDIA_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
-      - key: OCR_SPACE_API_KEY
+      - key: NVIDIA_API_KEY
         sync: false
       - key: SUPABASE_URL
         sync: false

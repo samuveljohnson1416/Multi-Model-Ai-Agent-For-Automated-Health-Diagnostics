@@ -1,9 +1,10 @@
 """
-Test suite for the v2 backend — domain logic and services.
+Test suite for the v3 backend.
 Uses pytest. Tests are organized by layer:
   1. Domain (pure functions, no I/O)
   2. Services (parser, validator)
-  3. API (FastAPI endpoints via TestClient)
+  3. LLM provider layer + agent framework (v3.0, no network)
+  4. API (FastAPI endpoints via TestClient)
 """
 
 # pyrefly: ignore [missing-import]

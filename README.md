@@ -1,22 +1,28 @@
-# Health Diagnostics AI Agent
+# Health Diagnostics AI Agent (v3.0)
 
-An AI-powered medical report analysis system that provides comprehensive blood work interpretation with intelligent insights and multi-report comparison capabilities.
+An AI-powered medical report analysis system that provides comprehensive blood
+work interpretation through a **multi-agent pipeline** — specialist agents for
+extraction, diagnosis, risk and nutrition, coordinated in parallel and merged
+into a single report. Every agent degrades gracefully to rule-based logic when
+no LLM provider is configured.
 
 ## Features
 
-- **Advanced OCR Processing** - Extract text from PDF and image files with multiple preprocessing strategies.
-- **Comprehensive Blood Analysis** - Parse 20+ blood parameters including CBC, differential counts, and chemistry panels.
-- **Intelligent AI Assistant** - Goal-oriented AI that provides personalized health recommendations.
-- **Multi-Report Comparison** - Track health trends across multiple reports over time.
-- **Real-time Chat Interface** - Interactive Q&A about your blood work results.
+- **Advanced OCR Processing** - Extract text from PDF and image files (NVIDIA Nemotron + Tesseract fallback).
+- **Comprehensive Blood Analysis** - Parse 30+ blood parameters including CBC, differential counts, and chemistry panels.
+- **Multi-Agent Analysis** - Extraction, Diagnosis, Risk and Nutrition agents orchestrated by a Coordinator.
+- **Agent Insights Page** - Inspect each agent's reasoning, the model it used, and its timing.
+- **Conversational Agent** - Chat that can reference the other agents' findings.
+- **Multi-Provider LLM Layer** - Groq + Google Gemini with per-agent model mapping and automatic fallback.
 
 ## Technology Stack
 
 - **Backend**: FastAPI
 - **Frontend**: Streamlit
-- **Validation**: Pydantic
-- **Database**: Supabase
-- **Architecture**: Service Layer with Repository Pattern
+- **LLM**: Groq (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`) + Google Gemini (`gemini-flash-latest`)
+- **Validation**: Pydantic v2
+- **Database**: Supabase (in-memory fallback)
+- **Architecture**: Routes → Services → Agents → LLM Providers, with a Domain layer of pure functions
 
 ## Installation
 
@@ -38,7 +44,9 @@ pip install -r requirements.txt
 ```
 
 4. Environment Variables:
-Copy `.env.example` to `.env` and fill in your Supabase and API credentials.
+Copy `.env.example` to `.env` and fill in your credentials. All keys are
+optional — with none set, the app runs entirely on rule-based logic. For
+AI-powered agents set `GROQ_API_KEY` and/or `GEMINI_API_KEY`.
 
 5. Install Tesseract OCR:
    - **Windows**: Download from [GitHub releases](https://github.com/UB-Mannheim/tesseract/wiki)
