@@ -6,6 +6,7 @@ No global mutable state, no sys.path hacks.
 """
 
 import logging
+from collections import deque
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -127,6 +128,7 @@ async def lifespan(app: FastAPI):
     app.state.repository = repo
     app.state.ocr_service = ocr
     app.state.limiter = limiter
+    app.state.recent_reports = deque(maxlen=25)  # for the internal /agent-review page
 
     logger.info(f"LLM providers: {registry.list_available() or '✗ none (rule-based fallback)'}")
     logger.info(f"Supabase: {'✓ connected' if settings.has_supabase else '✗ using in-memory'}")

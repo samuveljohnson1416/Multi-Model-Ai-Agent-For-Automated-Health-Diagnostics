@@ -39,6 +39,14 @@ async def list_reports(
     return {"user_id": user_id, "reports": reports, "total": len(reports)}
 
 
+@router.get("/debug/recent-reports")
+async def recent_reports(request: Request):
+    """Recent analysis runs (in-memory, this process only) for the internal
+    /agent-review page. Returns id, file name, and timestamp — no report data."""
+    recent = getattr(request.app.state, "recent_reports", None)
+    return {"reports": list(recent) if recent else []}
+
+
 @router.delete("/reports/{report_id}")
 async def delete_report(request: Request, report_id: str):
     """Delete a report and its chat history."""

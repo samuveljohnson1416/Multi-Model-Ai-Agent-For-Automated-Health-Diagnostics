@@ -20,8 +20,12 @@ analyze_page = st.Page("pages/upload.py", title="New analysis", icon=":material/
 results_page = st.Page("pages/dashboard.py", title="Results", icon=":material/description:")
 questions_page = st.Page("pages/chat.py", title="Questions", icon=":material/chat:")
 history_page = st.Page("pages/history.py", title="History", icon=":material/history:")
+# Unlisted diagnostic page — reachable only at /agent-review (its nav link is
+# hidden via CSS in theme.py).
+agent_review_page = st.Page("pages/agent_review.py", title="Agent review",
+                            icon=":material/hub:", url_path="agent-review")
 
-pg = st.navigation([analyze_page, results_page, questions_page, history_page])
+pg = st.navigation([analyze_page, results_page, questions_page, history_page, agent_review_page])
 
 with st.sidebar:
     st.markdown(f"### {APP_TITLE}")

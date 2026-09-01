@@ -35,6 +35,9 @@ _CSS = """
 #MainMenu, header [data-testid="stToolbar"], footer {visibility: hidden;}
 [data-testid="stDecoration"] {display: none;}
 
+/* Keep the internal /agent-review page out of the menu */
+[data-testid="stSidebarNav"] a[href$="/agent-review"] {display: none;}
+
 /* Calmer, tighter layout */
 .block-container {padding-top: 2.5rem; padding-bottom: 4rem; max-width: 60rem;}
 h1 {font-weight: 650; letter-spacing: -0.01em;}

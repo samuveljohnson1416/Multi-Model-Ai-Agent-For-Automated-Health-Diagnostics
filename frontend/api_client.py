@@ -113,6 +113,17 @@ def send_chat_message(
         return None
 
 
+def get_recent_reports() -> List[Dict[str, Any]]:
+    """Recent analysis runs (for the internal /agent-review page)."""
+    try:
+        response = httpx.get(f"{API_BASE_URL}/debug/recent-reports", timeout=_TIMEOUT)
+        response.raise_for_status()
+        return response.json().get("reports", [])
+    except Exception as e:
+        logger.error(f"Error fetching recent reports: {e}")
+        return []
+
+
 def get_health() -> Optional[Dict[str, Any]]:
     """Check API health status."""
     try:
