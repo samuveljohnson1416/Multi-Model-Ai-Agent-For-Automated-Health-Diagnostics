@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     # ── Google Gemini LLM ─────────────────────────────────────
     gemini_api_key: str = Field(default="", description="Google Gemini API key")
     gemini_model: str = Field(
-        default="gemini-flash-latest",
-        description="Gemini model ID (gemini-flash-latest, gemini-3.6-flash, etc.)",
+        default="gemini-3.6-flash",
+        description="Gemini model ID",
     )
     gemini_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
     gemini_max_tokens: int = Field(default=1024, ge=1, le=8192)

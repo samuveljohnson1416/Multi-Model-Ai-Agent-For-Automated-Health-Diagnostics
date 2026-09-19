@@ -18,7 +18,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import get_settings, Settings
-from .db.client import init_supabase, close_supabase
+from .db.client import init_supabase, close_supabase, is_connected
 from .db.repository import ReportRepository
 from .services.ocr_service import OCRService
 from .services.parser_service import ParserService
@@ -130,11 +130,15 @@ async def lifespan(app: FastAPI):
     app.state.limiter = limiter
     app.state.recent_reports = deque(maxlen=25)  # for the internal /agent-review page
 
-    logger.info(f"LLM providers: {registry.list_available() or '✗ none (rule-based fallback)'}")
-    logger.info(f"Supabase: {'✓ connected' if settings.has_supabase else '✗ using in-memory'}")
-    tesseract_status = "✓" if ocr._tesseract_available else ("✗ [DEV: disabled]" if not ocr._tesseract_enabled else "✗ not found")
-    logger.info(f"OCR: nvidia_nemotron={'✓' if ocr._nvidia_api_key else '✗'}, tesseract={tesseract_status}")
-    logger.info(f"API Key guard: {'✓ enabled' if settings.has_api_key else '✗ disabled (set API_KEY to enable)'}")
+    logger.info(f"LLM providers: {registry.list_available() or 'none (rule-based fallback)'}")
+    nvidia_ok = "OK" if ocr._nvidia_api_key else "--"
+    gemini_vision_ok = "OK" if ocr._gemini_api_key else "--"
+    tesseract_ok = "OK" if ocr._tesseract_available else ("disabled" if not ocr._tesseract_enabled else "not found")
+    logger.info(f"OCR: nvidia={nvidia_ok}, gemini_vision={gemini_vision_ok}, tesseract={tesseract_ok}")
+    db_status = "connected" if is_connected() else "in-memory (no Supabase)"
+    logger.info(f"Supabase: {db_status}")
+    guard_status = "enabled" if settings.has_api_key else "disabled"
+    logger.info(f"API Key guard: {guard_status}")
     logger.info(f"Max upload size: {settings.max_upload_mb} MB")
     logger.info("API ready!")
 
