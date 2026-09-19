@@ -5,7 +5,7 @@ Generates targeted nutritional advice based on abnormal blood values
 and patient demographics. Recommends specific foods to include/avoid,
 supplements to consider, and lifestyle changes.
 
-Preferred model: Gemini Flash (long context for detailed plans).
+Preferred model: Groq (detailed plans).
 Fallback: Generic recommendations from report_interpreter.py.
 """
 

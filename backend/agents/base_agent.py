@@ -55,7 +55,7 @@ class BaseAgent(ABC):
         """System prompt that defines this agent's role and behavior."""
 
     @abstractmethod
-    async def _execute_llm(self, context: AgentContext) -> str:
+    async def _execute_llm(self, context: AgentContext) -> "str | tuple[str, list[str]]":
         """
         Execute the agent's task using the LLM.
 
@@ -84,7 +84,9 @@ class BaseAgent(ABC):
         # Try LLM-powered execution
         if self.has_llm:
             try:
-                content = await self._execute_llm(context)
+                out = await self._execute_llm(context)
+                # Autonomous agents return (text, tool_call_steps)
+                content, steps = out if isinstance(out, tuple) else (out, [])
                 elapsed_ms = int((time.perf_counter() - start) * 1000)
 
                 logger.info(
@@ -97,6 +99,7 @@ class BaseAgent(ABC):
                     status="success",
                     provider_used=self._provider.display_name,
                     content=content,
+                    structured_data={"tool_calls": steps} if steps else {},
                     execution_time_ms=elapsed_ms,
                 )
 

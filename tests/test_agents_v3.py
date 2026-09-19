@@ -7,8 +7,7 @@ No test doubles. Two kinds of tests:
     real ProviderRegistry with unconfigured providers, and the real FastAPI
     app started with the API keys cleared.
   * Live: real Groq API calls, marked `requires_groq` and skipped when no
-    Groq key is configured. Gemini is not exercised live (the project's
-    current key is denied by Google).
+    Groq key is configured.
 """
 
 # pyrefly: ignore [missing-import]
@@ -17,17 +16,12 @@ import pytest
 
 from backend.config import get_settings
 from backend.services.llm.groq_provider import GroqProvider
-from backend.services.llm.gemini_provider import GeminiProvider
 from backend.services.llm.provider_registry import ProviderRegistry
 
 _SETTINGS = get_settings()
 _HAS_GROQ = bool(_SETTINGS.groq_api_key)
-_HAS_GEMINI = bool(_SETTINGS.gemini_api_key)
 
 requires_groq = pytest.mark.skipif(not _HAS_GROQ, reason="Groq API key not configured")
-requires_both = pytest.mark.skipif(
-    not (_HAS_GROQ and _HAS_GEMINI), reason="Both Groq and Gemini keys required"
-)
 
 # A syntactically valid model id that Groq does not serve — used to force a
 # real API error so the agent's rule-based fallback can be exercised.
@@ -66,31 +60,18 @@ def _context(parameters=None):
 
 class TestProviderRegistry:
     def test_registers_only_available(self):
-        # Real GroqProvider with a key is available; real GeminiProvider with
-        # no key has no client and is not available.
-        reg = ProviderRegistry(
-            groq_provider=GroqProvider(api_key="x-not-blank", model="m"),
-            gemini_provider=GeminiProvider(api_key=""),
-        )
+        # A GroqProvider without a key has no client and is not registered.
+        reg = ProviderRegistry(groq_provider=GroqProvider(api_key="", model="m"))
+        assert reg.list_available() == []
+        reg = ProviderRegistry(groq_provider=GroqProvider(api_key="x-not-blank", model="m"))
         assert reg.list_available() == ["groq"]
         assert reg.has_providers is True
 
     def test_falls_back_when_preferred_absent(self):
         groq = GroqProvider(api_key="x-not-blank", model="m")
         reg = ProviderRegistry(groq_provider=groq)
-        # "gemini" isn't registered → registry returns the one available provider
-        assert reg.get_provider("gemini") is groq
-
-    @requires_both
-    def test_returns_preferred_when_present(self):
-        reg = ProviderRegistry(
-            groq_provider=_real_groq(),
-            gemini_provider=GeminiProvider(
-                api_key=_SETTINGS.gemini_api_key, model=_SETTINGS.gemini_model
-            ),
-        )
-        assert reg.get_provider("gemini").provider_name == "gemini"
-        assert reg.get_provider("groq").provider_name == "groq"
+        # "other" isn't registered → registry returns the one available provider
+        assert reg.get_provider("other") is groq
 
     def test_empty_registry(self):
         reg = ProviderRegistry()
@@ -251,7 +232,7 @@ def client_no_llm(monkeypatch):
     from fastapi.testclient import TestClient
     from backend import config
 
-    for var in ("GROQ_API_KEY", "GEMINI_API_KEY", "NVIDIA_API_KEY",
+    for var in ("GROQ_API_KEY", "NVIDIA_API_KEY",
                 "SUPABASE_URL", "SUPABASE_KEY", "API_KEY"):
         monkeypatch.setenv(var, "")
     config.get_settings.cache_clear()
@@ -329,7 +310,7 @@ class TestApiKeyGuard:
     def client(self, monkeypatch):
         from fastapi.testclient import TestClient
         from backend import config
-        for var in ("GROQ_API_KEY", "GEMINI_API_KEY", "NVIDIA_API_KEY",
+        for var in ("GROQ_API_KEY", "NVIDIA_API_KEY",
                     "SUPABASE_URL", "SUPABASE_KEY"):
             monkeypatch.setenv(var, "")
         monkeypatch.setenv("API_KEY", "s3cr3t")

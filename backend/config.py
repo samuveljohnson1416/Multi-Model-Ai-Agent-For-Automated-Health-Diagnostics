@@ -30,22 +30,13 @@ class Settings(BaseSettings):
         description="Groq model ID used by the Risk Agent (larger reasoning model).",
     )
 
-    # ── Google Gemini LLM ─────────────────────────────────────
-    gemini_api_key: str = Field(default="", description="Google Gemini API key")
-    gemini_model: str = Field(
-        default="gemini-3.6-flash",
-        description="Gemini model ID",
-    )
-    gemini_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
-    gemini_max_tokens: int = Field(default=1024, ge=1, le=8192)
-
     # ── Agent → Provider mapping ──────────────────────────────
     # Which provider each agent prefers. Falls back to any available
     # provider (then rule-based) when the preferred one is not configured.
-    agent_extraction_provider: str = Field(default="gemini")
+    agent_extraction_provider: str = Field(default="groq")
     agent_diagnosis_provider: str = Field(default="groq")
     agent_risk_provider: str = Field(default="groq")
-    agent_nutrition_provider: str = Field(default="gemini")
+    agent_nutrition_provider: str = Field(default="groq")
     agent_chat_provider: str = Field(default="groq")
 
     # ── OCR ────────────────────────────────────────────────────
@@ -104,13 +95,9 @@ class Settings(BaseSettings):
         return bool(self.groq_api_key)
 
     @property
-    def has_gemini(self) -> bool:
-        return bool(self.gemini_api_key)
-
-    @property
     def has_llm(self) -> bool:
         """True when at least one LLM provider is configured."""
-        return self.has_groq or self.has_gemini
+        return self.has_groq
 
     @property
     def has_supabase(self) -> bool:

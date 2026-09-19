@@ -10,7 +10,6 @@ from typing import Optional, Dict, List
 
 from .provider_base import LLMProvider
 from .groq_provider import GroqProvider
-from .gemini_provider import GeminiProvider
 
 logger = logging.getLogger(__name__)
 
@@ -21,22 +20,15 @@ class ProviderRegistry:
 
     Usage:
         registry = ProviderRegistry(settings)
-        provider = registry.get_provider("groq")          # specific
-        provider = registry.get_provider("groq", "gemini") # with fallback
-        provider = registry.get_default()                   # any available
+        provider = registry.get_provider("groq")   # specific, falls back to any available
+        provider = registry.get_default()           # any available
     """
 
-    def __init__(
-        self,
-        groq_provider: Optional[GroqProvider] = None,
-        gemini_provider: Optional[GeminiProvider] = None,
-    ):
+    def __init__(self, groq_provider: Optional[GroqProvider] = None):
         self._providers: Dict[str, LLMProvider] = {}
 
         if groq_provider and groq_provider.available:
             self._providers["groq"] = groq_provider
-        if gemini_provider and gemini_provider.available:
-            self._providers["gemini"] = gemini_provider
 
         available = list(self._providers.keys())
         logger.info(f"ProviderRegistry initialized: {len(available)} providers available: {available}")
@@ -44,7 +36,7 @@ class ProviderRegistry:
         if not available:
             logger.warning(
                 "No LLM providers available! "
-                "Set GROQ_API_KEY or GEMINI_API_KEY for AI-powered features."
+                "Set GROQ_API_KEY for AI-powered features."
             )
 
     @property
@@ -68,7 +60,7 @@ class ProviderRegistry:
             An LLMProvider instance, or None if nothing is available.
 
         Example:
-            registry.get_provider("gemini", "groq")  # prefer Gemini, fall back to Groq
+            registry.get_provider("groq")
         """
         # Try preferred providers in order
         for name in preferred:

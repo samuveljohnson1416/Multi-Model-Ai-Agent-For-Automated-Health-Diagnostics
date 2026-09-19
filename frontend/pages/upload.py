@@ -73,6 +73,8 @@ if st.button("Analyze", type="primary", use_container_width=True):
             "We couldn't analyze that file. Make sure it's a readable blood "
             "test report with numeric results, then try again."
         )
+        if api_client.last_error:
+            st.caption(f"Details: {api_client.last_error}")
         st.stop()
 
     st.session_state.report_id = result.get("report_id")

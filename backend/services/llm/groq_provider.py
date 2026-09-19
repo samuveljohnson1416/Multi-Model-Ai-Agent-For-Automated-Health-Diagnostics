@@ -5,6 +5,8 @@ Supports multiple models: Llama 3.1, Mixtral, Gemma.
 Extracted from the original llm_service.py single-provider implementation.
 """
 
+import asyncio
+import json
 import logging
 from typing import Optional, List, Dict
 
@@ -26,7 +28,7 @@ class GroqProvider(LLMProvider):
     def __init__(
         self,
         api_key: str,
-        model: str = "llama-3.1-8b-instant",
+        model: str = "openai/gpt-oss-20b",  # matches config.py; older llama-3.x defaults were retired (404)
         temperature: float = 0.1,
         max_tokens: int = 1024,
         timeout: int = 30,
@@ -57,6 +59,10 @@ class GroqProvider(LLMProvider):
     @property
     def provider_name(self) -> str:
         return "groq"
+
+    @property
+    def supports_tools(self) -> bool:
+        return True
 
     @property
     def model_name(self) -> str:
@@ -121,7 +127,8 @@ class GroqProvider(LLMProvider):
     ) -> str:
         """Internal: make the Groq API call with error handling."""
         try:
-            response = self._client.chat.completions.create(
+            response = await asyncio.to_thread(
+                self._client.chat.completions.create,
                 model=self._model,
                 messages=messages,
                 temperature=temperature or self._temperature,
@@ -141,6 +148,43 @@ class GroqProvider(LLMProvider):
         except Exception as e:
             logger.error(f"Unexpected Groq error: {e}")
             raise
+
+    async def chat_with_tools(
+        self,
+        messages: List[Dict],
+        tools: Optional[List[Dict]] = None,
+        system_prompt: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> Dict:
+        """One turn of a tool-calling conversation (OpenAI-style tools)."""
+        if not self.available:
+            raise RuntimeError("GroqProvider is not available (no API key)")
+
+        full = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + messages
+        kwargs = {"tools": tools, "tool_choice": "auto"} if tools else {}
+        try:
+            response = await asyncio.to_thread(
+                self._client.chat.completions.create,
+                model=self._model,
+                messages=full,
+                temperature=self._temperature if temperature is None else temperature,
+                max_tokens=max_tokens or self._max_tokens,
+                **kwargs,
+            )
+        except (RateLimitError, APIConnectionError, APIError) as e:
+            logger.error(f"Groq tool-call error (model={self._model}): {e}")
+            raise
+
+        msg = response.choices[0].message
+        calls = []
+        for tc in msg.tool_calls or []:
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            calls.append({"id": tc.id, "name": tc.function.name, "arguments": args})
+        return {"content": (msg.content or "").strip() or None, "tool_calls": calls}
 
     def get_status(self) -> dict:
         """Provider status for health check endpoint."""

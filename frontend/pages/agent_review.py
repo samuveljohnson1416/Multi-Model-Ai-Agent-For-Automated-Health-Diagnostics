@@ -46,7 +46,7 @@ with st.expander("How the agents are wired", expanded=False):
 - Agents never call each other. Only the coordinator sees all results.
 
 **Providers** — each agent asks the `ProviderRegistry` for a preferred provider
-(`groq` or `gemini`); if that one isn't configured it uses whatever is, and if a
+(currently `groq`); if that one isn't configured it uses whatever is, and if a
 call fails the agent runs its own rule-based fallback.
         """
     )

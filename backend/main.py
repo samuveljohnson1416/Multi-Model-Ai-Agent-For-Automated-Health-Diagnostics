@@ -26,7 +26,7 @@ from .services.validator_service import ValidatorService
 from .services.llm_service import LLMService
 from .services.analysis_service import AnalysisService
 from .services.chat_service import ChatService
-from .services.llm import ProviderRegistry, GroqProvider, GeminiProvider
+from .services.llm import ProviderRegistry, GroqProvider
 from .agents import (
     ExtractionAgent,
     DiagnosisAgent,
@@ -61,14 +61,7 @@ def build_registry(settings: Settings) -> ProviderRegistry:
         timeout=settings.groq_timeout,
     ) if settings.has_groq else None
 
-    gemini = GeminiProvider(
-        api_key=settings.gemini_api_key,
-        model=settings.gemini_model,
-        temperature=settings.gemini_temperature,
-        max_tokens=settings.gemini_max_tokens,
-    ) if settings.has_gemini else None
-
-    return ProviderRegistry(groq_provider=groq, gemini_provider=gemini)
+    return ProviderRegistry(groq_provider=groq)
 
 
 def build_coordinator(registry: ProviderRegistry, settings: Settings) -> CoordinatorAgent:
@@ -76,7 +69,7 @@ def build_coordinator(registry: ProviderRegistry, settings: Settings) -> Coordin
     # Each agent uses its preferred provider, then falls back to any other
     # configured provider, then (inside the agent) to rule-based logic.
     def pick(preferred: str):
-        return registry.get_provider(preferred, "groq", "gemini")
+        return registry.get_provider(preferred, "groq")
 
     # Risk Agent prefers a larger Groq model when Groq is available.
     groq = registry.get_groq()
@@ -86,9 +79,16 @@ def build_coordinator(registry: ProviderRegistry, settings: Settings) -> Coordin
         else pick(settings.agent_risk_provider)
     )
 
+    # Diagnosis is tool-calling, which the larger model does more reliably.
+    diagnosis_provider = (
+        groq.with_model(settings.groq_risk_model)
+        if groq is not None and settings.agent_diagnosis_provider == "groq"
+        else pick(settings.agent_diagnosis_provider)
+    )
+
     return CoordinatorAgent(
         extraction_agent=ExtractionAgent(pick(settings.agent_extraction_provider)),
-        diagnosis_agent=DiagnosisAgent(pick(settings.agent_diagnosis_provider)),
+        diagnosis_agent=DiagnosisAgent(diagnosis_provider),
         risk_agent=RiskAgent(risk_provider),
         nutrition_agent=NutritionAgent(pick(settings.agent_nutrition_provider)),
     )
@@ -132,9 +132,8 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"LLM providers: {registry.list_available() or 'none (rule-based fallback)'}")
     nvidia_ok = "OK" if ocr._nvidia_api_key else "--"
-    gemini_vision_ok = "OK" if ocr._gemini_api_key else "--"
     tesseract_ok = "OK" if ocr._tesseract_available else ("disabled" if not ocr._tesseract_enabled else "not found")
-    logger.info(f"OCR: nvidia={nvidia_ok}, gemini_vision={gemini_vision_ok}, tesseract={tesseract_ok}")
+    logger.info(f"OCR: nvidia={nvidia_ok}, tesseract={tesseract_ok}")
     db_status = "connected" if is_connected() else "in-memory (no Supabase)"
     logger.info(f"Supabase: {db_status}")
     guard_status = "enabled" if settings.has_api_key else "disabled"

@@ -4,8 +4,7 @@ OCR service — text extraction from medical documents.
 Fallback chain for images / scanned PDFs:
   1. Direct text extraction (PDF text layer / JSON / CSV / TXT)
   2. NVIDIA Nemotron OCR-v2 (cloud, requires NVIDIA_API_KEY)
-  3. Gemini Vision OCR (cloud, requires GEMINI_API_KEY — reliable fallback)
-  4. Tesseract OCR (local, requires Tesseract binary installed)
+  3. Tesseract OCR (local, requires Tesseract binary installed)
 """
 
 import io
@@ -102,14 +101,11 @@ class OCRService:
     def __init__(self):
         settings = get_settings()
         self._nvidia_api_key = settings.nvidia_api_key if settings.has_nvidia_ocr else None
-        self._gemini_api_key = settings.gemini_api_key if settings.has_gemini else None
         self._ocr_timeout = settings.ocr_timeout
         self._tesseract_enabled = settings.tesseract_enabled  # False when OCR_DISABLE_TESSERACT=true
         self._tesseract_available = self._check_tesseract() if self._tesseract_enabled else False
         if not self._tesseract_enabled:
             logger.info("[DEV] Tesseract OCR disabled via OCR_DISABLE_TESSERACT setting")
-        if self._gemini_api_key:
-            logger.info("Gemini Vision OCR available as fallback")
 
     def _check_tesseract(self) -> bool:
         """Check if Tesseract is available on the system."""
@@ -171,13 +167,7 @@ class OCRService:
                 if result and len(result.text.strip()) > 20:
                     return result
 
-            # 2. Try Gemini Vision (reliable cloud fallback, uses existing Gemini key)
-            if self._gemini_api_key:
-                result = await self._extract_gemini_vision(file_bytes, file_type)
-                if result and len(result.text.strip()) > 20:
-                    return result
-
-            # 3. Try Tesseract (local fallback, skipped when OCR_DISABLE_TESSERACT=true)
+            # 2. Try Tesseract (local fallback, skipped when OCR_DISABLE_TESSERACT=true)
             if self._tesseract_available:
                 result = self._extract_tesseract(file_bytes, file_type)
                 if result and len(result.text.strip()) > 20:
@@ -368,80 +358,6 @@ class OCRService:
 
         return None
 
-    async def _extract_gemini_vision(
-        self, file_bytes: bytes, file_type: str
-    ) -> Optional[ExtractionResult]:
-        """
-        Extract text from an image or scanned PDF using the Gemini Vision API.
-
-        This acts as a reliable cloud fallback when NVIDIA OCR is unavailable or
-        returns an error. Gemini 2.0 Flash handles medical lab report images well.
-        """
-        try:
-            from google import genai
-            from google.genai import types as genai_types
-
-            client = genai.Client(api_key=self._gemini_api_key)
-            Image = _lazy_import_pil()
-
-            # Convert PDF pages to images if needed
-            if file_type == "pdf":
-                try:
-                    from pdf2image import convert_from_bytes
-                    settings = get_settings()
-                    images = convert_from_bytes(
-                        file_bytes,
-                        dpi=200,
-                        poppler_path=settings.poppler_path,
-                    )
-                except Exception as e:
-                    logger.warning(f"pdf2image failed for Gemini Vision OCR: {e}")
-                    return None
-            else:
-                images = [Image.open(io.BytesIO(file_bytes))]
-
-            all_text = []
-
-            for page_num, img in enumerate(images, start=1):
-                # Convert image to JPEG bytes for Gemini
-                buf = io.BytesIO()
-                img.convert("RGB").save(buf, format="JPEG", quality=90)
-                img_bytes_jpeg = buf.getvalue()
-
-                prompt = (
-                    "You are an OCR assistant. Extract ALL text from this medical lab report image "
-                    "exactly as it appears. Preserve numbers, units, parameter names, and reference "
-                    "ranges faithfully. Output plain text only — no commentary, no markdown formatting."
-                )
-
-                response = client.models.generate_content(
-                    model="gemini-3.6-flash",
-                    contents=[
-                        genai_types.Part.from_bytes(data=img_bytes_jpeg, mime_type="image/jpeg"),
-                        prompt,
-                    ],
-                )
-
-                page_text = response.text.strip() if response.text else ""
-                if page_text:
-                    logger.debug(
-                        "[GEMINI VISION] Page %d: extracted %d chars",
-                        page_num, len(page_text),
-                    )
-                    all_text.append(page_text)
-
-            if all_text:
-                return ExtractionResult(
-                    text="\n".join(all_text),
-                    source="gemini_vision",
-                    page_count=len(images),
-                )
-
-        except Exception as e:
-            logger.warning(f"Gemini Vision OCR failed: {e}")
-
-        return None
-
     def _extract_tesseract(
         self, file_bytes: bytes, file_type: str
     ) -> Optional[ExtractionResult]:
@@ -601,13 +517,8 @@ class OCRService:
         """Get OCR provider status for health check."""
         return {
             "name": "ocr",
-            "available": (
-                self._tesseract_available
-                or bool(self._nvidia_api_key)
-                or bool(self._gemini_api_key)
-            ),
+            "available": self._tesseract_available or bool(self._nvidia_api_key),
             "nvidia_nemotron": bool(self._nvidia_api_key),
-            "gemini_vision": bool(self._gemini_api_key),
             "tesseract": self._tesseract_available,
             "tesseract_disabled_by_dev_flag": not self._tesseract_enabled,
         }

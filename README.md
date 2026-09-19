@@ -18,8 +18,11 @@ a healthcare provider.
 - **Blood parameter parsing** — 30+ parameters (CBC, differential count,
   lipids, liver/kidney panels, thyroid, vitamins) with sanity-bound checks
   against OCR misreads.
-- **Age/sex-adjusted validation** — status (normal/low/high/critical) and
-  deviation severity computed by pure functions in `backend/domain/`.
+- **Reference-range validation** — status (normal/low/high/critical) and
+  deviation severity computed by pure functions in `backend/domain/`. The
+  range printed on the report is used first (it is what the lab used); the
+  built-in age/sex-adjusted range is the fallback, and a printed range that
+  looks like OCR noise is ignored.
 - **Risk scoring** — a basic abnormal-value score, Framingham 10-year
   cardiovascular risk, and lipid ratios.
 - **Multi-agent interpretation** — an `Extraction` agent runs first, then
@@ -27,8 +30,16 @@ a healthcare provider.
   by a `Coordinator`; a `Conversational` agent answers follow-up questions
   with access to the other agents' findings. Every agent falls back to
   rule-based logic if no model answers.
-- **Multi-provider LLM layer** — Groq and Google Gemini behind one interface,
-  with per-agent provider preference and automatic fallback between them.
+- **Autonomous Diagnosis agent** — the Diagnosis agent runs a tool-calling
+  loop instead of a single prompt. It decides which read-only tools to call
+  (list/look up parameters, reference ranges, patient context, risk scores,
+  search the report text), in what order, and when it has enough to answer,
+  capped at 6 tool rounds. The tools cannot modify results, so the model can
+  interpret the numbers but not change them. The calls it made are returned in
+  each agent's `structured_data.tool_calls`. The other agents are still
+  single-call.
+- **Provider abstraction** — Groq sits behind a small provider interface with a
+  registry, so another LLM can be added without touching the agents.
 - **Plain, task-focused UI** — four pages (analyze, results, questions,
   history); no jargon, no raw model output on screen.
 - **Internal `/agent-review` page** — an unlisted diagnostic view of the last
@@ -43,7 +54,7 @@ a healthcare provider.
 |------|-----------|
 | Backend | FastAPI, Pydantic v2, pydantic-settings |
 | Frontend | Streamlit, pandas, Plotly |
-| LLM providers | Groq (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`) + Google Gemini (`gemini-flash-latest`) |
+| LLM providers | Groq (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`) |
 | OCR | pdfplumber, pytesseract (Tesseract), pdf2image, OpenCV, Pillow, NVIDIA Nemotron OCR-v2 |
 | Database | Supabase (optional — falls back to in-memory storage) |
 | Security | `slowapi` rate limiting, custom API-key middleware |
@@ -63,10 +74,11 @@ backend/
   routes/                analyze.py, chat.py, reports.py, health.py
   services/               ocr_service, parser_service, validator_service,
                            analysis_service, chat_service, llm_service
-  services/llm/            provider_base, groq_provider, gemini_provider, provider_registry
+  services/llm/            provider_base, groq_provider, provider_registry
   agents/                  base_agent, agent_models, coordinator_agent,
                            extraction_agent, diagnosis_agent, risk_agent,
-                           nutrition_agent, conversational_agent
+                           nutrition_agent, conversational_agent,
+                           tools (read-only tools + tool-calling loop)
   domain/                  reference_ranges, unit_converter, risk_calculator, report_interpreter
   models/                  blood_parameter, report, chat, health
   db/                      client (Supabase), repository (Supabase or in-memory)
@@ -82,6 +94,8 @@ frontend/
 tests/
   test_v3.py              Domain + service tests
   test_agents_v3.py        LLM provider, agent, and wired-API tests
+  test_agentic_diagnosis.py  Tool-calling loop (scripted model, no network)
+  test_parser_table.py     Parser table rows and report-range priority
 
 render.yaml, Dockerfile.backend, Dockerfile.frontend, Dockerfile (single-container),
 start-backend.sh, start-frontend.sh, start.sh, requirements.txt, .env.example
@@ -112,9 +126,8 @@ pip install -r requirements.txt
    | Variable | Purpose |
    |----------|---------|
    | `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_RISK_MODEL` | Groq access and model choices |
-   | `GEMINI_API_KEY`, `GEMINI_MODEL` | Google Gemini access and model |
-   | `NVIDIA_API_KEY` | Optional cloud OCR for scans/photos |
-   | `AGENT_EXTRACTION_PROVIDER`, `AGENT_DIAGNOSIS_PROVIDER`, `AGENT_RISK_PROVIDER`, `AGENT_NUTRITION_PROVIDER`, `AGENT_CHAT_PROVIDER` | Override which provider (`groq`/`gemini`) each agent prefers |
+   | `NVIDIA_API_KEY` | Optional cloud OCR (Nemotron) for scans/photos — OCR only, not an LLM. Leave unset unless you have a real key; any value enables it |
+   | `AGENT_EXTRACTION_PROVIDER`, `AGENT_DIAGNOSIS_PROVIDER`, `AGENT_RISK_PROVIDER`, `AGENT_NUTRITION_PROVIDER`, `AGENT_CHAT_PROVIDER` | Override which provider (`groq`) each agent prefers |
    | `SUPABASE_URL`, `SUPABASE_KEY` | Optional persistent storage |
    | `API_KEY` | If set, every `/api/*` request needs an `X-API-Key` header |
    | `MAX_UPLOAD_MB` | Upload size limit (default 10) |
@@ -152,8 +165,8 @@ pytest -q
 ```
 
 Tests marked `requires_groq` make real Groq API calls and are skipped
-automatically if `GROQ_API_KEY` isn't set — no test doubles are used for the
-LLM/agent layer.
+automatically if `GROQ_API_KEY` isn't set. The tool-calling loop tests use a
+scripted stand-in model so they run offline.
 
 ### Production / Render Deployment
 
@@ -175,9 +188,6 @@ Notes:
 - The free plan sleeps idle services; the first request after a pause takes
   ~30–60 s while the container wakes.
 - The backend health check is `/api/health` (stays public even with `API_KEY` set).
-- The two Gemini-preferred agents are routed to Groq by default
-  (`AGENT_EXTRACTION_PROVIDER` / `AGENT_NUTRITION_PROVIDER` in `render.yaml`);
-  remove those lines if you have a working Gemini key.
 
 ## Supported File Formats
 

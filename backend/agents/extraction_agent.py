@@ -7,7 +7,7 @@ Works as a post-processor after OCR + regex parsing:
   3. Corrects OCR errors (e.g., "Hemog1obin" → "Hemoglobin")
   4. Returns a refined, more complete parameter list
 
-Preferred model: Gemini Flash (good at structured extraction from messy text).
+Preferred model: Groq (structured extraction from messy text).
 Fallback: Returns the regex-parsed parameters unchanged.
 """
 

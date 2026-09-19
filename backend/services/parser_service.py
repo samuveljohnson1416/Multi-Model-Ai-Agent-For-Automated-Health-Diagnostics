@@ -375,6 +375,8 @@ class ParserService:
 
             # Find the first numeric value in the remaining cells
             value = None
+            unit = None
+            ref_range = None
             for cell in cells[1:]:
                 # Check if it looks like a reference range (N - N)
                 range_match = re.search(r"(\d+\.?\d*)\s*[-–]\s*(\d+\.?\d*)", cell)
@@ -390,6 +392,14 @@ class ParserService:
                 )
                 if unit_match:
                     unit = unit_match.group(1)
+                    continue
+                num_match = re.fullmatch(r"[<>]?\s*(\d+\.?\d*)", cell.strip())
+                if num_match and value is None:
+                    value = float(num_match.group(1))
+
+            # No numeric cell -> let the regex fallback in parse() fill this parameter
+            if value is None:
+                continue
 
             entry: dict = {"value": value, "unit": unit or "N/A"}
             if ref_range:

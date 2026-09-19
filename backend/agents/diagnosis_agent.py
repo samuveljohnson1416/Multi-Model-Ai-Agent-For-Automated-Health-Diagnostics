@@ -14,6 +14,7 @@ from typing import Optional
 from ..services.llm.provider_base import LLMProvider
 from .base_agent import BaseAgent
 from .agent_models import AgentContext
+from .tools import build_tools, run_tool_loop
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +50,26 @@ Rules:
 - Use at most one level of headings (##)
 - Keep response under 300 words"""
 
-    async def _execute_llm(self, context: AgentContext) -> str:
-        """Use LLM to generate clinical interpretation."""
+    _AGENT_TASK = """Interpret this patient's blood test report. You have read-only tools; use them to investigate before answering.
+
+Suggested approach: start with list_parameters, look at the abnormal values, check related values for patterns (e.g. an infection picture, an anemia picture, a metabolic cluster), use lookup_reference_range / get_patient_context / get_risk_scores / search_report_text when they would change your interpretation, then write the answer.
+
+Rules for the answer:
+- Only state values, units and statuses that the tools returned. Never invent a number.
+- Use "may indicate" / "could suggest" language; you are not a doctor.
+- Short paragraphs and bullet lists, no tables. Lead with the single most important finding.
+- Cover: the 2-3 most important findings, any cross-value patterns and what they may point to, and what a clinician might check next."""
+
+    async def _execute_llm(self, context: AgentContext):
+        """Autonomous tool-using run when the provider supports it, else one-shot."""
+        if self._provider.supports_tools:
+            return await run_tool_loop(
+                self._provider, self.system_prompt, self._AGENT_TASK, build_tools(context)
+            )
+        return await self._execute_single_shot(context)
+
+    async def _execute_single_shot(self, context: AgentContext) -> str:
+        """Use LLM to generate clinical interpretation from a pre-built prompt."""
         abnormal_lines = []
         for p in context.abnormal_parameters:
             line = (

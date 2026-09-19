@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT = 60.0
 _HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
+last_error = ""  # reason the most recent analyze_report() call failed, for the UI
 
 
 def analyze_report(
@@ -31,6 +32,7 @@ def analyze_report(
         API response dict with report_id, analysis, etc.
         None on error.
     """
+    global last_error
     try:
         files = {"file": (filename, file_content)}
         data = {}
@@ -49,16 +51,23 @@ def analyze_report(
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
+        last_error = ""
         return response.json()
 
     except httpx.ConnectError:
         logger.error(f"Cannot connect to API at {API_BASE_URL}")
+        last_error = f"Cannot reach the backend at {API_BASE_URL}. Is it running?"
         return None
     except httpx.HTTPStatusError as e:
         logger.error(f"API error: {e.response.status_code} — {e.response.text}")
+        try:
+            last_error = str(e.response.json().get("detail", e.response.text))
+        except Exception:
+            last_error = e.response.text
         return None
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
+        last_error = str(e)
         return None
 
 

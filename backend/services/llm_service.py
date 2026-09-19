@@ -109,8 +109,7 @@ class LLMService:
         return (
             "AI insights are not available (no LLM provider configured). "
             "Your blood report has been analyzed using rule-based validation. "
-            "Set up a Groq API key (GROQ_API_KEY) or Google Gemini API key "
-            "(GEMINI_API_KEY) for AI-powered insights."
+            "Set up a Groq API key (GROQ_API_KEY) for AI-powered insights."
         )
 
     def _error_fallback(self, error: str) -> str:

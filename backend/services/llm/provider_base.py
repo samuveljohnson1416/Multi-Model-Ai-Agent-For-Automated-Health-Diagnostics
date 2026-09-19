@@ -1,7 +1,7 @@
 """
 Abstract base class for LLM providers.
 
-All providers (Groq, Gemini, etc.) implement this interface.
+All providers (Groq, etc.) implement this interface.
 The ProviderRegistry and agents depend only on this abstraction.
 """
 
@@ -65,6 +65,27 @@ class LLMProvider(ABC):
         """
 
     @property
+    def supports_tools(self) -> bool:
+        """Whether chat_with_tools() is implemented (needed by autonomous agents)."""
+        return False
+
+    async def chat_with_tools(
+        self,
+        messages: List[Dict],
+        tools: Optional[List[Dict]] = None,
+        system_prompt: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> Dict:
+        """
+        One turn of a tool-calling conversation.
+
+        `messages`/`tools` use the OpenAI chat format. Returns
+        {"content": str | None, "tool_calls": [{"id", "name", "arguments": dict}]}.
+        """
+        raise NotImplementedError(f"{self.provider_name} does not support tool calling")
+
+    @property
     @abstractmethod
     def available(self) -> bool:
         """Whether this provider is configured and ready to use."""
@@ -72,7 +93,7 @@ class LLMProvider(ABC):
     @property
     @abstractmethod
     def provider_name(self) -> str:
-        """Provider identifier (e.g., 'groq', 'gemini')."""
+        """Provider identifier (e.g., 'groq')."""
 
     @property
     @abstractmethod

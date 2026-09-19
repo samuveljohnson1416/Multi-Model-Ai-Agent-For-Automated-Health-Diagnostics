@@ -38,21 +38,9 @@ services:
         value: "openai/gpt-oss-20b"
       - key: GROQ_RISK_MODEL
         value: "openai/gpt-oss-120b"
-      - key: GEMINI_MODEL
-        value: "gemini-flash-latest"
-
-      # ── Agent → provider routing ─────────────────────────────────────────
-      # Default the two normally-Gemini agents to Groq. If you have a working
-      # Gemini key, delete these two lines to use Gemini for them.
-      - key: AGENT_EXTRACTION_PROVIDER
-        value: "groq"
-      - key: AGENT_NUTRITION_PROVIDER
-        value: "groq"
 
       # ── Secrets (set in the Render dashboard) ────────────────────────────
       - key: GROQ_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
         sync: false
       - key: NVIDIA_API_KEY          # optional — better OCR on poor scans
         sync: false

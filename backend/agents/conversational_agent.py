@@ -203,14 +203,14 @@ class ConversationalAgent:
         if "diet" in q or "eat" in q or "food" in q or "nutrition" in q:
             return (
                 "For personalized dietary recommendations based on your blood report, "
-                "please configure an LLM provider (Groq or Gemini API key). "
+                "please configure an LLM provider (Groq API key). "
                 "In the meantime, consult a nutritionist for tailored advice."
             )
 
         return (
             f"Your report contains {len(parameters)} parameters with "
             f"{len(abnormal)} abnormal values. For AI-powered insights, "
-            f"please configure a Groq or Gemini API key. For medical interpretation, "
+            f"please configure a Groq API key. For medical interpretation, "
             f"please consult your healthcare provider."
         )
 
