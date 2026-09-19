@@ -12,9 +12,12 @@ a healthcare provider.
 
 ## Features
 
-- **OCR pipeline** — direct text extraction for digital PDFs/JSON/CSV; NVIDIA
-  Nemotron OCR (cloud) or Tesseract (local, with OpenCV preprocessing) for
-  scans and photos.
+- **OCR pipeline** — direct text extraction for digital PDFs/JSON/CSV. Scans
+  and photos (including phone photos of printed reports) go through a Groq
+  vision model first, then NVIDIA Nemotron OCR (if a key is set), then
+  Tesseract (local, with OpenCV preprocessing). Scanned PDFs are rendered with
+  `pypdfium2`, so no Poppler install is needed. Values read by the vision model
+  are flagged in the results with a "check against your original" warning.
 - **Blood parameter parsing** — 30+ parameters (CBC, differential count,
   lipids, liver/kidney panels, thyroid, vitamins) with sanity-bound checks
   against OCR misreads.
@@ -55,7 +58,7 @@ a healthcare provider.
 | Backend | FastAPI, Pydantic v2, pydantic-settings |
 | Frontend | Streamlit, pandas, Plotly |
 | LLM providers | Groq (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`) |
-| OCR | pdfplumber, pytesseract (Tesseract), pdf2image, OpenCV, Pillow, NVIDIA Nemotron OCR-v2 |
+| OCR | pdfplumber, pypdfium2, Groq vision model, pytesseract (Tesseract), OpenCV, Pillow, NVIDIA Nemotron OCR-v2 (optional) |
 | Database | Supabase (optional — falls back to in-memory storage) |
 | Security | `slowapi` rate limiting, custom API-key middleware |
 | Testing | `pytest`, `pytest-asyncio` |
@@ -125,7 +128,7 @@ pip install -r requirements.txt
 
    | Variable | Purpose |
    |----------|---------|
-   | `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_RISK_MODEL` | Groq access and model choices |
+   | `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_RISK_MODEL`, `GROQ_VISION_MODEL` | Groq access and model choices (`GROQ_VISION_MODEL` reads photos/scans; default `qwen/qwen3.8-27b`) |
    | `NVIDIA_API_KEY` | Optional cloud OCR (Nemotron) for scans/photos — OCR only, not an LLM. Leave unset unless you have a real key; any value enables it |
    | `AGENT_EXTRACTION_PROVIDER`, `AGENT_DIAGNOSIS_PROVIDER`, `AGENT_RISK_PROVIDER`, `AGENT_NUTRITION_PROVIDER`, `AGENT_CHAT_PROVIDER` | Override which provider (`groq`) each agent prefers |
    | `SUPABASE_URL`, `SUPABASE_KEY` | Optional persistent storage |

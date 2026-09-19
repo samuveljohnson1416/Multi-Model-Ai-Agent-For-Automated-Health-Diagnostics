@@ -13,7 +13,7 @@ from config import API_BASE_URL, API_KEY
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT = 60.0
+_TIMEOUT = 180.0  # scanned reports go through a vision model, then the agents
 _HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 last_error = ""  # reason the most recent analyze_report() call failed, for the UI
 

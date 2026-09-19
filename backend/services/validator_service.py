@@ -19,13 +19,16 @@ logger = logging.getLogger(__name__)
 _RANGE_RE = re.compile(r"^\s*(\d+\.?\d*)\s*[-–]\s*(\d+\.?\d*)")
 
 
-def _report_range(text, builtin: Optional[dict]) -> Optional[dict]:
+def _report_range(text, builtin: Optional[dict]):
     """
     Parse the reference range printed on the report ("13.0 - 17.0").
 
-    Returns {"min", "max"} or None if absent, malformed, or implausible. A range is
-    implausible when it differs from the built-in one by more than 3x on either
-    bound (guards against OCR noise like a date being read as a range).
+    Returns ({"min", "max"}, scale) or None if absent, malformed, or implausible.
+    A range within 3x of the built-in one is used as is (scale 1). A range about
+    1000x smaller (e.g. platelets printed as "150 - 400" x10^3/uL against a built-in
+    150000 - 400000 /cumm) means the report uses thousands: the range is scaled up
+    and the caller must scale the value the same way. Anything else is treated as
+    OCR noise (e.g. a date read as a range) and ignored.
     """
     m = _RANGE_RE.match(str(text or ""))
     if not m:
@@ -33,9 +36,14 @@ def _report_range(text, builtin: Optional[dict]) -> Optional[dict]:
     lo, hi = float(m.group(1)), float(m.group(2))
     if lo >= hi:
         return None
-    if builtin and builtin["max"] > 0 and not (1 / 3 <= hi / builtin["max"] <= 3):
+    if builtin and builtin["max"] > 0:
+        ratio = hi / builtin["max"]
+        if 1 / 3 <= ratio <= 3:
+            return {"min": lo, "max": hi}, 1
+        if 1 / 3000 <= ratio <= 1 / 300:
+            return {"min": lo * 1000, "max": hi * 1000}, 1000
         return None
-    return {"min": lo, "max": hi}
+    return {"min": lo, "max": hi}, 1
 
 
 class ValidatorService:
@@ -97,10 +105,12 @@ class ValidatorService:
         builtin = get_reference_range(canonical, age=age, gender=gender)
         ref = None
         if value == reported_value:
-            ref = _report_range(data.get("reference_range"), builtin)
-        if ref:
-            ref["unit"] = unit
-        else:
+            found = _report_range(data.get("reference_range"), builtin)
+            if found:
+                ref, scale = found
+                ref["unit"] = unit
+                value *= scale
+        if not ref:
             ref = builtin
 
         ref_min = ref_max = deviation = severity = None

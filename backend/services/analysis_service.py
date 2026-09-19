@@ -102,6 +102,12 @@ class AnalysisService:
         if self.ocr._nvidia_api_key and extraction.source == "tesseract":
             warnings.append("NVIDIA OCR API failed or was unavailable, falling back to local Tesseract OCR.")
 
+        if extraction.source == "groq_vision":
+            warnings.append(
+                "Values were read from the image by an AI vision model. "
+                "Please check them against your original report."
+            )
+
         # ── Step 2: Parse parameters ──────────────────────────
         logger.info("Step 2: Parsing blood parameters")
 

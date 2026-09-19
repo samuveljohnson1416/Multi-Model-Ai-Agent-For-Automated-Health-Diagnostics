@@ -3,12 +3,15 @@ OCR service — text extraction from medical documents.
 
 Fallback chain for images / scanned PDFs:
   1. Direct text extraction (PDF text layer / JSON / CSV / TXT)
-  2. NVIDIA Nemotron OCR-v2 (cloud, requires NVIDIA_API_KEY)
-  3. Tesseract OCR (local, requires Tesseract binary installed)
+  2. Groq vision model (cloud, uses GROQ_API_KEY) — reads photos/tables best
+  3. NVIDIA Nemotron OCR-v2 (cloud, requires NVIDIA_API_KEY)
+  4. Tesseract OCR (local, requires Tesseract binary installed)
 """
 
+import asyncio
 import io
 import json
+import statistics
 import csv
 import base64
 import logging
@@ -65,6 +68,90 @@ def _lazy_import_pdfplumber():
     return _pdfplumber
 
 
+def _pdf_to_images(file_bytes: bytes, dpi: int, max_pages: Optional[int] = None) -> list:
+    """
+    Render PDF pages to PIL images.
+
+    Uses pypdfium2 (pure pip, no system binary) and falls back to pdf2image, which
+    needs Poppler on PATH. Scanned PDFs used to fail outright wherever Poppler
+    was missing (e.g. a default Windows install).
+    """
+    try:
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(file_bytes)
+        try:
+            count = len(pdf) if max_pages is None else min(len(pdf), max_pages)
+            return [pdf[i].render(scale=dpi / 72).to_pil().convert("RGB") for i in range(count)]
+        finally:
+            pdf.close()
+    except Exception as e:
+        logger.warning(f"pypdfium2 render failed ({e}); trying pdf2image/Poppler")
+    from pdf2image import convert_from_bytes
+    return convert_from_bytes(
+        file_bytes, dpi=dpi, last_page=max_pages, poppler_path=get_settings().poppler_path
+    )
+
+
+def _detections_to_text(detections: list) -> str:
+    """
+    Turn NVIDIA OCR word/phrase detections (text + bounding box) into text lines.
+
+    The API returns boxes, not lines. Boxes are grouped into a line when their
+    vertical centres are within ~0.6 text height, then ordered left to right, so a
+    table row reads "RBC 6.22 h 10^6/uL 3.80-6.00".
+    """
+    boxes = []
+    for d in detections:
+        text = ((d.get("text_prediction") or {}).get("text") or "").strip()
+        pts = (d.get("bounding_box") or {}).get("points") or []
+        if text and pts:
+            xs, ys = [p["x"] for p in pts], [p["y"] for p in pts]
+            boxes.append((text, min(xs), (min(ys) + max(ys)) / 2, max(ys) - min(ys)))
+    if not boxes:
+        return ""
+
+    tol = 0.6 * statistics.median(b[3] for b in boxes)
+    lines: list = []  # each: {"cy": running mean y, "boxes": [...]}
+    for box in sorted(boxes, key=lambda b: b[2]):
+        for line in reversed(lines[-3:]):
+            if abs(box[2] - line["cy"]) <= tol:
+                line["boxes"].append(box)
+                line["cy"] += (box[2] - line["cy"]) / len(line["boxes"])
+                break
+        else:
+            lines.append({"cy": box[2], "boxes": [box]})
+    return "\n".join(" ".join(b[0] for b in sorted(l["boxes"], key=lambda b: b[1])) for l in lines)
+
+
+_VISION_PROMPT = """You are reading a photo or scan of a blood test report. List every laboratory result row in the table(s), exactly as printed. Do not infer, correct or invent values.
+Output ONLY one line per row, in this exact format, with no other text:
+name|value|unit|range_low|range_high
+Rules:
+- Use the printed test name or abbreviation (e.g. HGB, WBC, PLT).
+- value, range_low and range_high are plain numbers. ALWAYS fill range_low and range_high from the Range/Ref.Range column printed in the same row, e.g. RBC|6.22|10^6/uL|3.8|6.0
+- For a range printed as "up to X" / "<X", give range_low 0 and range_high X. Leave both empty only if no range is printed for that row.
+- For differential counts that show both an absolute count and a percentage, output only the percentage row, with unit %.
+- Take each reference range from the same row as its value.
+- Skip text-only results (NEGATIVE, REACTIVE...), patient details, headers, and charts."""
+
+
+def _vision_rows_to_lines(reply: str) -> list:
+    """Turn 'name|value|unit|low|high' rows into 'NAME value unit low - high' lines."""
+    lines = []
+    for row in reply.splitlines():
+        parts = [p.strip() for p in row.strip().strip("`").split("|")]
+        if len(parts) < 3 or parts[0].lower() == "name":
+            continue
+        try:
+            line = f"{parts[0]} {float(parts[1]):g} {parts[2]}"
+            if len(parts) >= 5 and parts[4]:
+                line += f" {float(parts[3] or 0):g} - {float(parts[4]):g}"
+            lines.append(line)
+        except ValueError:
+            continue
+    return lines
+
+
 def _lazy_import_cv2():
     global _cv2
     if _cv2 is None:
@@ -82,7 +169,7 @@ def _lazy_import_cv2():
 class ExtractionResult:
     """Result from text extraction."""
     text: str
-    source: str  # "pdf_text", "tesseract", "nvidia_nemotron", "direct", "csv"
+    source: str  # "pdf_text", "groq_vision", "tesseract", "nvidia_nemotron", "direct", "csv"
     confidence: Optional[float] = None
     page_count: Optional[int] = None
 
@@ -101,6 +188,8 @@ class OCRService:
     def __init__(self):
         settings = get_settings()
         self._nvidia_api_key = settings.nvidia_api_key if settings.has_nvidia_ocr else None
+        self._groq_api_key = settings.groq_api_key or None
+        self._groq_vision_model = settings.groq_vision_model
         self._ocr_timeout = settings.ocr_timeout
         self._tesseract_enabled = settings.tesseract_enabled  # False when OCR_DISABLE_TESSERACT=true
         self._tesseract_available = self._check_tesseract() if self._tesseract_enabled else False
@@ -161,13 +250,19 @@ class OCRService:
 
         # ── Image or scanned PDF: OCR ──────────────────────────
         if file_type in ("png", "jpg", "jpeg", "pdf"):
-            # 1. Try NVIDIA Nemotron first (highest accuracy when available)
+            # 1. Groq vision model: understands table layout, copes with photos
+            if self._groq_api_key:
+                result = await self._extract_groq_vision(file_bytes, file_type)
+                if result and len(result.text.strip()) > 20:
+                    return result
+
+            # 2. NVIDIA Nemotron OCR (when a key is configured)
             if self._nvidia_api_key:
                 result = await self._extract_nvidia_nemotron(file_bytes, file_type)
                 if result and len(result.text.strip()) > 20:
                     return result
 
-            # 2. Try Tesseract (local fallback, skipped when OCR_DISABLE_TESSERACT=true)
+            # 3. Try Tesseract (local fallback, skipped when OCR_DISABLE_TESSERACT=true)
             if self._tesseract_available:
                 result = self._extract_tesseract(file_bytes, file_type)
                 if result and len(result.text.strip()) > 20:
@@ -281,16 +376,9 @@ class OCRService:
 
             if file_type == "pdf":
                 try:
-                    from pdf2image import convert_from_bytes
-                    settings = get_settings()
-                    # Convert all pages without last_page limit
-                    images = convert_from_bytes(
-                        file_bytes, 
-                        dpi=200, 
-                        poppler_path=settings.poppler_path
-                    )
+                    images = _pdf_to_images(file_bytes, dpi=200)
                 except Exception as e:
-                    logger.warning(f"pdf2image conversion failed for NVIDIA OCR: {e}")
+                    logger.warning(f"PDF to image conversion failed for NVIDIA OCR: {e}")
                     return None
             else:
                 images = [Image.open(io.BytesIO(file_bytes))]
@@ -330,14 +418,24 @@ class OCRService:
                         ]
                     }
 
-                    response = await client.post(invoke_url, headers=headers, json=payload)
+                    # The service returns transient 502/503s; retry those once.
+                    for attempt in range(2):
+                        response = await client.post(invoke_url, headers=headers, json=payload)
+                        if response.status_code < 500 or attempt == 1:
+                            break
+                        await asyncio.sleep(1.5)
                     response.raise_for_status()
-                    
+
                     result_json = response.json()
-                    
+
                     extracted_text = ""
                     if "data" in result_json and isinstance(result_json["data"], list):
-                        extracted_text = " ".join([str(item.get("text", "")) for item in result_json["data"]])
+                        # Current format: data[].text_detections[] with text + bounding box
+                        extracted_text = "\n".join(
+                            _detections_to_text(item.get("text_detections") or [])
+                            or str(item.get("text", ""))
+                            for item in result_json["data"]
+                        )
                     elif "choices" in result_json and isinstance(result_json["choices"], list):
                         extracted_text = result_json["choices"][0].get("message", {}).get("content", "")
                     else:
@@ -356,6 +454,48 @@ class OCRService:
         except Exception as e:
             logger.warning(f"NVIDIA Nemotron OCR failed: {e}")
 
+        return None
+
+    async def _extract_groq_vision(
+        self, file_bytes: bytes, file_type: str
+    ) -> Optional[ExtractionResult]:
+        """Read result rows from a photo/scan with a Groq vision model."""
+        try:
+            from groq import Groq
+
+            Image = _lazy_import_pil()
+            images = (
+                _pdf_to_images(file_bytes, dpi=150, max_pages=5)
+                if file_type == "pdf"
+                else [Image.open(io.BytesIO(file_bytes))]
+            )
+            client = Groq(api_key=self._groq_api_key, timeout=60)
+
+            lines = []
+            for img in images:
+                img = img.convert("RGB")
+                img.thumbnail((2000, 2000))
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=80)
+                url = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+                response = await asyncio.to_thread(
+                    client.chat.completions.create,
+                    model=self._groq_vision_model,
+                    messages=[{"role": "user", "content": [
+                        {"type": "text", "text": _VISION_PROMPT},
+                        {"type": "image_url", "image_url": {"url": url}},
+                    ]}],
+                    temperature=0,
+                    max_tokens=900,  # this model's free tier allows ~1000 output tokens/min
+                )
+                lines += _vision_rows_to_lines(response.choices[0].message.content or "")
+
+            if lines:
+                return ExtractionResult(
+                    text="\n".join(lines), source="groq_vision", page_count=len(images)
+                )
+        except Exception as e:
+            logger.warning(f"Groq vision OCR failed: {e}")
         return None
 
     def _extract_tesseract(
@@ -381,17 +521,9 @@ class OCRService:
             # Convert to PIL Image(s)
             if file_type == "pdf":
                 try:
-                    from pdf2image import convert_from_bytes
-                    settings = get_settings()
-                    images = convert_from_bytes(
-                        file_bytes,
-                        dpi=300,
-                        first_page=1,
-                        last_page=5,
-                        poppler_path=settings.poppler_path,
-                    )
+                    images = _pdf_to_images(file_bytes, dpi=300, max_pages=5)
                 except Exception as e:
-                    logger.warning(f"pdf2image conversion failed: {e}")
+                    logger.warning(f"PDF to image conversion failed: {e}")
                     return None
             else:
                 images = [Image.open(io.BytesIO(file_bytes))]
@@ -517,7 +649,10 @@ class OCRService:
         """Get OCR provider status for health check."""
         return {
             "name": "ocr",
-            "available": self._tesseract_available or bool(self._nvidia_api_key),
+            "available": (
+                self._tesseract_available or bool(self._nvidia_api_key) or bool(self._groq_api_key)
+            ),
+            "groq_vision": bool(self._groq_api_key),
             "nvidia_nemotron": bool(self._nvidia_api_key),
             "tesseract": self._tesseract_available,
             "tesseract_disabled_by_dev_flag": not self._tesseract_enabled,

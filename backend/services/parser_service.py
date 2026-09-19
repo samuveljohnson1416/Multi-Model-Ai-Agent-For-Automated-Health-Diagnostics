@@ -205,6 +205,26 @@ SANITY_BOUNDS = {
 }
 
 
+# Differential rows often print "<abs count> <abs range> <percent> <percent range>",
+# e.g. "NEU 2.63 1.60-7.00 51.1 40.0-73.0". The regex patterns grab the first number
+# (the absolute count), which would be mistaken for a percentage.
+_DIFFERENTIAL = {"Neutrophils", "Lymphocytes", "Monocytes", "Eosinophils", "Basophils"}
+_NUM = r"\d+\.?\d*"
+_RANGE = rf"{_NUM}\s*[-–]\s*{_NUM}"
+_ABS_THEN_PERCENT = re.compile(
+    rf"{_NUM}\s*[hHlL!|]?\s*{_RANGE}\s*[hHlL!|]?\s*({_NUM})\s*[hHlL!|]?\s*({_RANGE})?"
+)
+
+
+def _percent_column(window: str, value_start: int):
+    """(percent value, its range or None) if the row is abs-then-percent, else None."""
+    m = _ABS_THEN_PERCENT.match(window, value_start)
+    if not m or float(m.group(1)) > 100:
+        return None
+    rng = re.sub(r"\s*[-–]\s*", " - ", m.group(2)) if m.group(2) else None
+    return float(m.group(1)), rng
+
+
 class ParserService:
     """
     Parses blood report text into structured parameter data.
@@ -441,7 +461,12 @@ class ParserService:
                     line_matched = True
                     try:
                         value = float(match.group(1))
-                        
+
+                        # Differential row with an absolute-count column first: use the percent
+                        percent = _percent_column(window, match.start(1)) if param_name in _DIFFERENTIAL else None
+                        if percent:
+                            value = percent[0]
+
                         # Sanity check
                         bounds = SANITY_BOUNDS.get(param_name)
                         if bounds and not (bounds[0] <= value <= bounds[1]):
@@ -454,10 +479,17 @@ class ParserService:
                             continue
 
                         # Try to extract unit from the window
-                        unit = self._extract_unit(window, match.end()) or default_unit
+                        unit = "%" if percent else (self._extract_unit(window, match.end()) or default_unit)
 
-                        # Try to extract reference range from the window
-                        ref_range = self._extract_reference_range(window)
+                        # Try to extract reference range from the window. For a percent
+                        # column with no adjacent range, leave it empty so the built-in
+                        # percent range is used rather than the absolute-count range.
+                        # Only look at the parameter's own row: the 2-line window would otherwise
+                        # hand it the previous/next row's range when its own row has none.
+                        row_end = len(line) if match.start(1) < len(line) else len(window)
+                        ref_range = percent[1] if percent else self._extract_reference_range(
+                            window[match.end():row_end]
+                        )
 
                         parameters[param_name] = {
                             "value": value,
@@ -490,6 +522,11 @@ class ParserService:
     def _extract_unit(self, line: str, value_end: int) -> Optional[str]:
         """Try to extract unit from text after the value."""
         remaining = line[value_end:].strip()
+        # Count units printed as a power of ten ("10^3/uL"): the numbers are scaled, so the
+        # unit must be kept for the validator to convert (default units would be wrong).
+        scaled = re.match(rf"[x×]?\s*10\s*[\^*]?\s*([36³⁶])\s*/\s*[µuμ]?\s*L", remaining, re.IGNORECASE)
+        if scaled:
+            return "×10³/µL" if scaled.group(1) in "3³" else "×10⁶/µL"
         unit_pattern = r"^\s*(g/dL|g/L|mg/dL|mmol/L|mEq/L|U/L|%|fL|pg|/cumm|cells/µL|mm/hr|ng/mL|pg/mL|mcg/dL|mIU/L|ng/dL|µmol/L|mill/cumm|lakhs/µL)"
         match = re.search(unit_pattern, remaining, re.IGNORECASE)
         return match.group(1) if match else None

@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     groq_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
     groq_max_tokens: int = Field(default=1024, ge=1, le=8192)
     groq_timeout: int = Field(default=30, description="Request timeout in seconds")
+    groq_vision_model: str = Field(
+        default="qwen/qwen3.8-27b",
+        description="Groq vision-capable model used to read photos/scans of reports.",
+    )
     groq_risk_model: str = Field(
         default="openai/gpt-oss-120b",
         description="Groq model ID used by the Risk Agent (larger reasoning model).",
