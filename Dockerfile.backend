@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bullseye
+FROM python:3.11-slim-bookworm
 
 # ── System dependencies ──────────────────────────────────────
 # Tesseract (OCR) + Poppler (PDF to image) + OpenCV deps

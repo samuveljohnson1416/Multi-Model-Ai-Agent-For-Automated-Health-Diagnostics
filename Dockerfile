@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bullseye
+FROM python:3.11-slim-bookworm
 
 # ── System dependencies (Tesseract + Poppler for PDF) ──────
 RUN apt-get update && apt-get install -y --no-install-recommends \
