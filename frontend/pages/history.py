@@ -1,61 +1,47 @@
-"""
-History Page — view past report analyses.
-"""
+"""History — previously analysed reports."""
 
 # pyrefly: ignore [missing-import]
 import streamlit as st
+
 import api_client
+from session import init_session_state
+from theme import apply_chrome
 
+apply_chrome()
+init_session_state()
 
-st.header("📋 Report History")
+st.title("History")
 
-# ── Fetch Reports ─────────────────────────────────────────────
-user_id = st.session_state.get("user_id")
-
-if not user_id:
-    st.info("No user session. Upload a report to start.")
-    st.stop()
-
-reports = api_client.get_user_reports(user_id)
+reports = api_client.get_user_reports(st.session_state.user_id)
 
 if not reports:
-    st.info("No reports found. Upload your first report to get started!")
+    st.write("No reports yet.")
+    if st.button("Start an analysis", type="primary"):
+        st.switch_page("pages/upload.py")
     st.stop()
 
-# ── Display Reports ───────────────────────────────────────────
-st.markdown(f"Found **{len(reports)}** report(s).")
-
 for report in reports:
-    report_id = report.get("id", "N/A")
-    created = report.get("created_at", "N/A")
-    filename = report.get("file_name", "Unknown")
-    status = report.get("status", "unknown")
-    summary = report.get("summary", {})
+    rid = report.get("id", "")
+    name = report.get("file_name", "Report")
+    created = report.get("created_at", "")
+    s = report.get("summary", {}) or {}
+    total = s.get("total_parameters", "—")
+    flagged = s.get("abnormal_count", "—")
 
     with st.container(border=True):
-        col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-
-        with col1:
-            st.markdown(f"**{filename}**")
-            st.caption(f"ID: `{report_id[:8]}...`")
-
-        with col2:
-            st.caption(f"📅 {created[:10] if isinstance(created, str) else 'N/A'}")
-
-        with col3:
-            total = summary.get("total_parameters", "?")
-            abnormal = summary.get("abnormal_count", "?")
-            st.caption(f"📊 {total} params, {abnormal} abnormal")
-
-        with col4:
-            if st.button("View", key=f"view_{report_id}"):
-                # Load full report
-                full_report = api_client.get_report(report_id)
-                if full_report:
-                    st.session_state.report_id = report_id
-                    st.session_state.analysis_result = full_report.get("analysis")
+        c1, c2 = st.columns([4, 1])
+        with c1:
+            st.markdown(f"**{name}**")
+            date = created[:10] if isinstance(created, str) else "—"
+            st.caption(f"{date}  ·  {total} values, {flagged} flagged")
+        with c2:
+            if st.button("Open", key=f"open_{rid}", use_container_width=True):
+                full = api_client.get_report(rid)
+                if full:
+                    st.session_state.report_id = rid
+                    st.session_state.report_name = name
+                    st.session_state.analysis_result = full.get("analysis")
                     st.session_state.chat_history = []
-                    st.success("Report loaded!")
-                    st.info("Navigate to **Analysis Dashboard** to view results.")
+                    st.switch_page("pages/dashboard.py")
                 else:
-                    st.error("Failed to load report.")
+                    st.error("Couldn't load that report.")

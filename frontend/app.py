@@ -1,54 +1,49 @@
-"""
-Health Diagnostics AI — Streamlit Multi-Page Application
+"""Health Diagnostics — Streamlit entry point (navigation + sidebar)."""
 
-Entry point. Configures page layout and navigation.
-This is 50 lines, not 2,830.
-"""
-
+# pyrefly: ignore [missing-import]
 import streamlit as st
 
 from config import APP_TITLE, APP_SUBTITLE
 from session import init_session_state
+from theme import apply_chrome
 
-
-# ── Page Config ───────────────────────────────────────────────
 st.set_page_config(
-    page_title="Health Diagnostics AI",
-    page_icon="🩸",
-    layout="wide",
+    page_title=APP_TITLE,
+    page_icon="🩺",
+    layout="centered",
     initial_sidebar_state="expanded",
 )
-
-
-# ── Session State ─────────────────────────────────────────────
-# Centralised in session.py — safe to call here and in every page.
+apply_chrome()
 init_session_state()
 
+analyze_page = st.Page("pages/upload.py", title="New analysis", icon=":material/upload_file:", default=True)
+results_page = st.Page("pages/dashboard.py", title="Results", icon=":material/description:")
+questions_page = st.Page("pages/chat.py", title="Questions", icon=":material/chat:")
+history_page = st.Page("pages/history.py", title="History", icon=":material/history:")
+# Unlisted diagnostic page — reachable only at /agent-review (its nav link is
+# hidden via CSS in theme.py).
+agent_review_page = st.Page("pages/agent_review.py", title="Agent review",
+                            icon=":material/hub:", url_path="agent-review")
 
+pg = st.navigation([analyze_page, results_page, questions_page, history_page, agent_review_page])
 
-# ── Navigation ────────────────────────────────────────────────
-upload_page = st.Page("pages/upload.py", title="Upload Report", icon="📤")
-dashboard_page = st.Page("pages/dashboard.py", title="Analysis Dashboard", icon="📊")
-chat_page = st.Page("pages/chat.py", title="Ask Questions", icon="💬")
-history_page = st.Page("pages/history.py", title="Report History", icon="📋")
-
-pg = st.navigation([upload_page, dashboard_page, chat_page, history_page])
-
-
-# ── Sidebar ───────────────────────────────────────────────────
 with st.sidebar:
-    st.title(APP_TITLE)
+    st.markdown(f"### {APP_TITLE}")
     st.caption(APP_SUBTITLE)
     st.divider()
 
-    if st.session_state.report_id:
-        st.success(f"Active report: `{st.session_state.report_id[:8]}...`")
+    result = st.session_state.get("analysis_result")
+    name = st.session_state.get("report_name")
+    if result and name:
+        st.caption("Open report")
+        st.markdown(f"**{name}**")
     else:
-        st.info("No report loaded. Upload one to get started.")
+        st.caption("No report open yet.")
 
     st.divider()
-    st.caption("v2.0.0 · Powered by Groq AI")
+    st.caption(
+        "Automated reading of a lab report. Not a diagnosis and not a "
+        "substitute for review by a doctor."
+    )
 
-
-# ── Run Page ──────────────────────────────────────────────────
 pg.run()

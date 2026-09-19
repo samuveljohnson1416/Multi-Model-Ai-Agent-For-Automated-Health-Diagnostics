@@ -6,6 +6,7 @@ a service interface that produces BloodParameter objects.
 """
 
 import logging
+import re
 from typing import Dict, List, Optional
 
 from ..models.blood_parameter import BloodParameter, ParameterStatus
@@ -14,6 +15,35 @@ from ..domain.unit_converter import convert_to_standard, get_standard_unit
 from ..domain.report_interpreter import compute_deviation
 
 logger = logging.getLogger(__name__)
+
+_RANGE_RE = re.compile(r"^\s*(\d+\.?\d*)\s*[-–]\s*(\d+\.?\d*)")
+
+
+def _report_range(text, builtin: Optional[dict]):
+    """
+    Parse the reference range printed on the report ("13.0 - 17.0").
+
+    Returns ({"min", "max"}, scale) or None if absent, malformed, or implausible.
+    A range within 3x of the built-in one is used as is (scale 1). A range about
+    1000x smaller (e.g. platelets printed as "150 - 400" x10^3/uL against a built-in
+    150000 - 400000 /cumm) means the report uses thousands: the range is scaled up
+    and the caller must scale the value the same way. Anything else is treated as
+    OCR noise (e.g. a date read as a range) and ignored.
+    """
+    m = _RANGE_RE.match(str(text or ""))
+    if not m:
+        return None
+    lo, hi = float(m.group(1)), float(m.group(2))
+    if lo >= hi:
+        return None
+    if builtin and builtin["max"] > 0:
+        ratio = hi / builtin["max"]
+        if 1 / 3 <= ratio <= 3:
+            return {"min": lo, "max": hi}, 1
+        if 1 / 3000 <= ratio <= 1 / 300:
+            return {"min": lo * 1000, "max": hi * 1000}, 1000
+        return None
+    return {"min": lo, "max": hi}, 1
 
 
 class ValidatorService:
@@ -64,19 +94,34 @@ class ValidatorService:
         unit = data.get("unit", "N/A")
 
         # Convert to standard unit if possible
+        reported_value = value
         standard_unit = get_standard_unit(canonical)
         if standard_unit and unit != "N/A":
             value, unit = convert_to_standard(canonical, value, unit)
 
-        # Get reference range
-        ref = get_reference_range(canonical, age=age, gender=gender)
+        # Reference range: the report's own range wins (it is what the lab used);
+        # built-in age/gender range is the fallback. Skip the report range if the
+        # value was unit-converted, since the printed range is in the original unit.
+        builtin = get_reference_range(canonical, age=age, gender=gender)
+        ref = None
+        if value == reported_value:
+            found = _report_range(data.get("reference_range"), builtin)
+            if found:
+                ref, scale = found
+                ref["unit"] = unit
+                value *= scale
+        if not ref:
+            ref = builtin
+
+        ref_min = ref_max = deviation = severity = None
+        ref_range_str = data.get("reference_range")
+        status = ParameterStatus.UNKNOWN
 
         if ref:
             ref_min = ref["min"]
             ref_max = ref["max"]
             ref_unit = ref.get("unit", unit)
 
-            # Determine status
             if value < ref_min:
                 status = ParameterStatus.LOW
             elif value > ref_max:
@@ -84,7 +129,6 @@ class ValidatorService:
             else:
                 status = ParameterStatus.NORMAL
 
-            # Compute deviation and severity
             deviation, severity = compute_deviation(value, ref_min, ref_max)
 
             # Check for critical values (> 50% deviation)
@@ -92,32 +136,6 @@ class ValidatorService:
                 status = ParameterStatus.CRITICAL
 
             ref_range_str = f"{ref_min} - {ref_max} {ref_unit}"
-        else:
-            # No reference range available — use the one from the report if present
-            ref_min = None
-            ref_max = None
-            ref_range_str = data.get("reference_range")
-            status = ParameterStatus.UNKNOWN
-            deviation = None
-            severity = None
-
-            # Try to validate against report's own reference range
-            if ref_range_str and "-" in str(ref_range_str):
-                try:
-                    parts = str(ref_range_str).split("-")
-                    ref_min = float(parts[0].strip())
-                    ref_max = float(parts[1].strip())
-
-                    if value < ref_min:
-                        status = ParameterStatus.LOW
-                    elif value > ref_max:
-                        status = ParameterStatus.HIGH
-                    else:
-                        status = ParameterStatus.NORMAL
-
-                    deviation, severity = compute_deviation(value, ref_min, ref_max)
-                except (ValueError, IndexError):
-                    pass
 
         return BloodParameter(
             name=canonical,

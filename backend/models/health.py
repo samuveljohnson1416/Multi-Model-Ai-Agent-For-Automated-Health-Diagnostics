@@ -17,5 +17,5 @@ class ProviderStatus(BaseModel):
 class HealthResponse(BaseModel):
     """Response from the health check endpoint."""
     status: str = Field(default="ok", pattern="^(ok|degraded|error)$")
-    version: str = Field(default="2.0.0")
+    version: str = Field(default="3.0.0")
     providers: list[ProviderStatus] = Field(default_factory=list)

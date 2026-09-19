@@ -95,6 +95,15 @@ async def analyze_report(
         # Don't fail the analysis if DB save fails
         report_id = str(uuid.uuid4())
 
+    # Track recent runs for the internal /agent-review page (in-memory, best effort)
+    recent = getattr(request.app.state, "recent_reports", None)
+    if recent is not None:
+        recent.appendleft({
+            "id": report_id,
+            "name": file.filename or "report",
+            "at": datetime.utcnow().isoformat(timespec="seconds"),
+        })
+
     return ReportResponse(
         report_id=report_id,
         created_at=datetime.utcnow(),

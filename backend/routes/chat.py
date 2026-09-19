@@ -10,6 +10,7 @@ from slowapi.util import get_remote_address
 
 from ..models.chat import ChatRequest, ChatResponse
 from ..models.blood_parameter import BloodParameter
+from ..agents.agent_models import AgentResult
 
 router = APIRouter(prefix="/api", tags=["Chat"])
 limiter = Limiter(key_func=get_remote_address)
@@ -26,7 +27,7 @@ async def chat_with_report(request: Request, body: ChatRequest):
     Requires a valid report_id from a prior /api/analyze call.
     """
     repository = request.app.state.repository
-    chat_service = request.app.state.chat_service
+    conversational_agent = request.app.state.conversational_agent
 
     # Validate message
     if len(body.message.strip()) < 3:
@@ -57,15 +58,23 @@ async def chat_with_report(request: Request, body: ChatRequest):
         for msg in chat_history
     ]
 
-    # Get recommendations
+    # Get recommendations + specialist agent reports from the stored analysis
     analysis = report.get("analysis", {})
     recommendations = analysis.get("recommendations", [])
 
+    agent_reports = []
+    for raw in analysis.get("agent_reports", []):
+        try:
+            agent_reports.append(AgentResult(**raw))
+        except Exception:
+            continue
+
     # Generate response
     try:
-        answer = await chat_service.ask(
+        answer = await conversational_agent.ask(
             question=body.message,
             parameters=parameters,
+            agent_reports=agent_reports or None,
             chat_history=history_messages,
             recommendations=recommendations,
         )

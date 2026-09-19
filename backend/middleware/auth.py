@@ -19,8 +19,10 @@ from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Paths that are always public regardless of API key
-_PUBLIC_PATHS = {"/health", "/", "/docs", "/redoc", "/openapi.json"}
+# Paths that are always public regardless of API key.
+# /api/health must stay open so platform health checks (e.g. Render) work
+# even when API_KEY is set.
+_PUBLIC_PATHS = {"/health", "/api/health", "/", "/docs", "/redoc", "/openapi.json"}
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):

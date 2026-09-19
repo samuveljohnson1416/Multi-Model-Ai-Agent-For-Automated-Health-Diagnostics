@@ -40,8 +40,13 @@ def init_supabase():
 
 
 def get_client():
-    """Get the Supabase client (may be None if not configured)."""
+    """Get the Supabase client (may be None if not configured or failed)."""
     return _client
+
+
+def is_connected() -> bool:
+    """Return True only when the Supabase client was successfully initialized."""
+    return _client is not None
 
 
 def close_supabase():

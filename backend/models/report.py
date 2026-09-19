@@ -38,8 +38,35 @@ class AnalysisResult(BaseModel):
     recommendations: List[str] = Field(default_factory=list)
     llm_insights: Optional[str] = Field(
         default=None,
-        description="LLM-generated clinical insights"
+        description="LLM-generated clinical insights (legacy field — mirrors executive_summary)"
     )
+
+    # ── Multi-agent analysis output (v3.0) ────────────────────
+    executive_summary: Optional[str] = Field(
+        default=None,
+        description="Unified summary merging all specialist agent insights"
+    )
+    diagnosis_insights: Optional[str] = Field(
+        default=None,
+        description="Clinical interpretation from the Diagnosis Agent"
+    )
+    enhanced_risk: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Organ-system risk profile from the Risk Agent"
+    )
+    nutrition_plan: Optional[str] = Field(
+        default=None,
+        description="Diet/lifestyle plan from the Nutrition Agent"
+    )
+    agent_reports: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Per-agent results (name, status, provider_used, content, timing)"
+    )
+    agents_used: List[str] = Field(
+        default_factory=list,
+        description="Provider/model identifiers used across the agent run"
+    )
+
     warnings: List[str] = Field(
         default_factory=list,
         description="Non-fatal warnings during processing (e.g. OCR fallbacks)"

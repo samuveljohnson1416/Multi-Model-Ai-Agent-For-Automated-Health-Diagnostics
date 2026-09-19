@@ -9,11 +9,13 @@ import httpx
 import logging
 from typing import Optional, Dict, Any, List
 
-from config import API_BASE_URL
+from config import API_BASE_URL, API_KEY
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT = 60.0
+_TIMEOUT = 180.0  # scanned reports go through a vision model, then the agents
+_HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
+last_error = ""  # reason the most recent analyze_report() call failed, for the UI
 
 
 def analyze_report(
@@ -30,6 +32,7 @@ def analyze_report(
         API response dict with report_id, analysis, etc.
         None on error.
     """
+    global last_error
     try:
         files = {"file": (filename, file_content)}
         data = {}
@@ -44,19 +47,27 @@ def analyze_report(
             f"{API_BASE_URL}/analyze",
             files=files,
             data=data,
+            headers=_HEADERS,
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
+        last_error = ""
         return response.json()
 
     except httpx.ConnectError:
         logger.error(f"Cannot connect to API at {API_BASE_URL}")
+        last_error = f"Cannot reach the backend at {API_BASE_URL}. Is it running?"
         return None
     except httpx.HTTPStatusError as e:
         logger.error(f"API error: {e.response.status_code} — {e.response.text}")
+        try:
+            last_error = str(e.response.json().get("detail", e.response.text))
+        except Exception:
+            last_error = e.response.text
         return None
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
+        last_error = str(e)
         return None
 
 
@@ -65,6 +76,7 @@ def get_report(report_id: str) -> Optional[Dict[str, Any]]:
     try:
         response = httpx.get(
             f"{API_BASE_URL}/reports/{report_id}",
+            headers=_HEADERS,
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
@@ -80,6 +92,7 @@ def get_user_reports(user_id: str) -> List[Dict[str, Any]]:
         response = httpx.get(
             f"{API_BASE_URL}/reports",
             params={"user_id": user_id},
+            headers=_HEADERS,
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
@@ -104,6 +117,7 @@ def send_chat_message(
                 "message": message,
                 "user_id": user_id,
             },
+            headers=_HEADERS,
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
@@ -113,10 +127,21 @@ def send_chat_message(
         return None
 
 
+def get_recent_reports() -> List[Dict[str, Any]]:
+    """Recent analysis runs (for the internal /agent-review page)."""
+    try:
+        response = httpx.get(f"{API_BASE_URL}/debug/recent-reports", headers=_HEADERS, timeout=_TIMEOUT)
+        response.raise_for_status()
+        return response.json().get("reports", [])
+    except Exception as e:
+        logger.error(f"Error fetching recent reports: {e}")
+        return []
+
+
 def get_health() -> Optional[Dict[str, Any]]:
     """Check API health status."""
     try:
-        response = httpx.get(f"{API_BASE_URL}/health", timeout=5.0)
+        response = httpx.get(f"{API_BASE_URL}/health", headers=_HEADERS, timeout=5.0)
         response.raise_for_status()
         return response.json()
     except Exception:

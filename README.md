@@ -1,22 +1,108 @@
-# Health Diagnostics AI Agent
+# Health Diagnostics AI Agent (v3.0)
 
-An AI-powered medical report analysis system that provides comprehensive blood work interpretation with intelligent insights and multi-report comparison capabilities.
+A web app that reads a blood test report — PDF, photo, or a structured data
+file — extracts the individual values, checks each one against an age- and
+sex-adjusted reference range, estimates health risk, and produces a
+plain-language interpretation through a small **multi-agent pipeline**.
+Every step has a deterministic, rule-based fallback, so the app works even
+with **no AI provider configured**.
+
+This is informational only. It does not diagnose and is not a substitute for
+a healthcare provider.
 
 ## Features
 
-- **Advanced OCR Processing** - Extract text from PDF and image files with multiple preprocessing strategies.
-- **Comprehensive Blood Analysis** - Parse 20+ blood parameters including CBC, differential counts, and chemistry panels.
-- **Intelligent AI Assistant** - Goal-oriented AI that provides personalized health recommendations.
-- **Multi-Report Comparison** - Track health trends across multiple reports over time.
-- **Real-time Chat Interface** - Interactive Q&A about your blood work results.
+- **OCR pipeline** — direct text extraction for digital PDFs/JSON/CSV. Scans
+  and photos (including phone photos of printed reports) go through a Groq
+  vision model first, then NVIDIA Nemotron OCR (if a key is set), then
+  Tesseract (local, with OpenCV preprocessing). Scanned PDFs are rendered with
+  `pypdfium2`, so no Poppler install is needed. Values read by the vision model
+  are flagged in the results with a "check against your original" warning.
+- **Blood parameter parsing** — 30+ parameters (CBC, differential count,
+  lipids, liver/kidney panels, thyroid, vitamins) with sanity-bound checks
+  against OCR misreads.
+- **Reference-range validation** — status (normal/low/high/critical) and
+  deviation severity computed by pure functions in `backend/domain/`. The
+  range printed on the report is used first (it is what the lab used); the
+  built-in age/sex-adjusted range is the fallback, and a printed range that
+  looks like OCR noise is ignored.
+- **Risk scoring** — a basic abnormal-value score, Framingham 10-year
+  cardiovascular risk, and lipid ratios.
+- **Multi-agent interpretation** — an `Extraction` agent runs first, then
+  `Diagnosis`, `Risk`, and `Nutrition` agents run in parallel and are merged
+  by a `Coordinator`; a `Conversational` agent answers follow-up questions
+  with access to the other agents' findings. Every agent falls back to
+  rule-based logic if no model answers.
+- **Autonomous Diagnosis agent** — the Diagnosis agent runs a tool-calling
+  loop instead of a single prompt. It decides which read-only tools to call
+  (list/look up parameters, reference ranges, patient context, risk scores,
+  search the report text), in what order, and when it has enough to answer,
+  capped at 6 tool rounds. The tools cannot modify results, so the model can
+  interpret the numbers but not change them. The calls it made are returned in
+  each agent's `structured_data.tool_calls`. The other agents are still
+  single-call.
+- **Provider abstraction** — Groq sits behind a small provider interface with a
+  registry, so another LLM can be added without touching the agents.
+- **Plain, task-focused UI** — four pages (analyze, results, questions,
+  history); no jargon, no raw model output on screen.
+- **Internal `/agent-review` page** — an unlisted diagnostic view of the last
+  pipeline run: which agent answered, which model, how long it took, and what
+  it produced. Reachable only by typing the URL (its nav link is hidden).
+- **Security basics** — an optional API-key guard on `/api/*`, per-IP rate
+  limiting, and an upload size limit.
 
 ## Technology Stack
 
-- **Backend**: FastAPI
-- **Frontend**: Streamlit
-- **Validation**: Pydantic
-- **Database**: Supabase
-- **Architecture**: Service Layer with Repository Pattern
+| Area | Technology |
+|------|-----------|
+| Backend | FastAPI, Pydantic v2, pydantic-settings |
+| Frontend | Streamlit, pandas, Plotly |
+| LLM providers | Groq (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`) |
+| OCR | pdfplumber, pypdfium2, Groq vision model, pytesseract (Tesseract), OpenCV, Pillow, NVIDIA Nemotron OCR-v2 (optional) |
+| Database | Supabase (optional — falls back to in-memory storage) |
+| Security | `slowapi` rate limiting, custom API-key middleware |
+| Testing | `pytest`, `pytest-asyncio` |
+| Deployment | Docker, Render (Blueprint) |
+
+Architecture: `routes → services → agents → LLM providers`, with a pure-function
+`domain` layer underneath. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+for the full diagram and pipeline description.
+
+## Project Structure
+
+```
+backend/
+  main.py              FastAPI app factory + lifespan (wires providers, agents, services)
+  config.py             Typed settings (pydantic-settings), loaded from .env
+  routes/                analyze.py, chat.py, reports.py, health.py
+  services/               ocr_service, parser_service, validator_service,
+                           analysis_service, chat_service, llm_service
+  services/llm/            provider_base, groq_provider, provider_registry
+  agents/                  base_agent, agent_models, coordinator_agent,
+                           extraction_agent, diagnosis_agent, risk_agent,
+                           nutrition_agent, conversational_agent,
+                           tools (read-only tools + tool-calling loop)
+  domain/                  reference_ranges, unit_converter, risk_calculator, report_interpreter
+  models/                  blood_parameter, report, chat, health
+  db/                      client (Supabase), repository (Supabase or in-memory)
+  middleware/              auth.py (API-key guard)
+
+frontend/
+  app.py                 Navigation + sidebar
+  theme.py                 Shared stylesheet + helpers
+  session.py               Session-state defaults
+  api_client.py             All calls to the backend
+  pages/                    upload, dashboard, chat, history, agent_review (unlisted)
+
+tests/
+  test_v3.py              Domain + service tests
+  test_agents_v3.py        LLM provider, agent, and wired-API tests
+  test_agentic_diagnosis.py  Tool-calling loop (scripted model, no network)
+  test_parser_table.py     Parser table rows and report-range priority
+
+render.yaml, Dockerfile.backend, Dockerfile.frontend, Dockerfile (single-container),
+start-backend.sh, start-frontend.sh, start.sh, requirements.txt, .env.example
+```
 
 ## Installation
 
@@ -37,10 +123,20 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Environment Variables:
-Copy `.env.example` to `.env` and fill in your Supabase and API credentials.
+4. Environment variables — copy `.env.example` to `.env`. All keys are
+   optional; with none set, the app runs entirely on rule-based logic.
 
-5. Install Tesseract OCR:
+   | Variable | Purpose |
+   |----------|---------|
+   | `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_RISK_MODEL`, `GROQ_VISION_MODEL` | Groq access and model choices (`GROQ_VISION_MODEL` reads photos/scans; default `qwen/qwen3.8-27b`) |
+   | `NVIDIA_API_KEY` | Optional cloud OCR (Nemotron) for scans/photos — OCR only, not an LLM. Leave unset unless you have a real key; any value enables it |
+   | `AGENT_EXTRACTION_PROVIDER`, `AGENT_DIAGNOSIS_PROVIDER`, `AGENT_RISK_PROVIDER`, `AGENT_NUTRITION_PROVIDER`, `AGENT_CHAT_PROVIDER` | Override which provider (`groq`) each agent prefers |
+   | `SUPABASE_URL`, `SUPABASE_KEY` | Optional persistent storage |
+   | `API_KEY` | If set, every `/api/*` request needs an `X-API-Key` header |
+   | `MAX_UPLOAD_MB` | Upload size limit (default 10) |
+   | `CORS_ORIGINS`, `DEBUG`, `API_HOST`, `API_PORT` | Standard web-app settings |
+
+5. Install Tesseract OCR (for local scanned-document OCR):
    - **Windows**: Download from [GitHub releases](https://github.com/UB-Mannheim/tesseract/wiki)
    - **macOS**: `brew install tesseract`
    - **Linux**: `sudo apt-get install tesseract-ocr`
@@ -49,7 +145,7 @@ Copy `.env.example` to `.env` and fill in your Supabase and API credentials.
 
 ### Development
 
-You can run the backend and frontend separately:
+Run the backend and frontend in separate terminals:
 
 **Backend:**
 ```bash
@@ -62,42 +158,46 @@ cd frontend
 streamlit run app.py
 ```
 
+Then open http://localhost:8501. The diagnostic view is at
+http://localhost:8501/agent-review after you've analyzed at least one report.
+
+### Tests
+
+```bash
+pytest -q
+```
+
+Tests marked `requires_groq` make real Groq API calls and are skipped
+automatically if `GROQ_API_KEY` isn't set. The tool-calling loop tests use a
+scripted stand-in model so they run offline.
+
 ### Production / Render Deployment
 
-This project is configured to deploy seamlessly on [Render](https://render.com) using the provided Blueprint.
+The repo ships a Render Blueprint (`render.yaml`) that creates two services from
+`Dockerfile.backend` and `Dockerfile.frontend`.
 
 **To deploy:**
 1. Push this repository to GitHub.
-2. In the Render Dashboard, click **New > Blueprint Instance**.
-3. Connect your repository. Render will automatically detect the `render.yaml` file and create two separate Web Services (Frontend and Backend).
-4. Go to the Environment section for each service in the Render Dashboard to fill in your API keys (Groq, Supabase, etc.).
+2. In Render, choose **New + → Blueprint** and select the repo. Render reads
+   `render.yaml` and creates `health-diagnostics-api` and `health-diagnostics-ui`.
+3. When prompted, provide the secret values you want. `GROQ_API_KEY` is the one
+   that matters; everything else is optional (the app runs rule-only without it).
+4. After the **backend** finishes its first deploy, copy its URL, then on the
+   **frontend** service set `API_BASE_URL` to `https://<backend-url>/api` and
+   redeploy the frontend.
+5. If you set `API_KEY` on the backend, set the **same** value on the frontend.
 
-**Why Render?**
-- True microservice architecture: FastAPI and Streamlit run and scale independently.
-- Managed routing via `API_BASE_URL`.
-- Clean separation of concerns with `Dockerfile.backend` and `Dockerfile.frontend`.
+Notes:
+- The free plan sleeps idle services; the first request after a pause takes
+  ~30–60 s while the container wakes.
+- The backend health check is `/api/health` (stays public even with `API_KEY` set).
 
 ## Supported File Formats
 
 - **PDF files** - Scanned or digital blood reports
-- **Image files** - PNG, JPG, JPEG format medical reports  
+- **Image files** - PNG, JPG, JPEG format medical reports
 - **JSON files** - Structured medical data
 - **CSV files** - Tabular blood work data
-
-## Project Structure
-
-```
-├── backend/            # FastAPI backend (Routes, Services, Domain, Repository)
-├── frontend/           # Streamlit user interface components
-├── docs/               # Project Documentation
-├── tests/              # Test files
-├── render.yaml         # Render Deployment Blueprint
-├── Dockerfile.backend  # Backend container spec
-├── Dockerfile.frontend # Frontend container spec
-├── start-backend.sh    # Backend startup script
-├── start-frontend.sh   # Frontend startup script
-└── requirements.txt    # Project dependencies
-```
 
 ## Disclaimer
 

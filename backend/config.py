@@ -19,12 +19,29 @@ class Settings(BaseSettings):
     # ── Groq LLM ──────────────────────────────────────────────
     groq_api_key: str = Field(default="", description="Groq API key for LLM inference")
     groq_model: str = Field(
-        default="llama-3.1-8b-instant",
-        description="Groq model ID (llama-3.1-8b-instant, mixtral-8x7b-32768, etc.)"
+        default="openai/gpt-oss-20b",
+        description="Groq model ID for general agents (openai/gpt-oss-20b, groq/compound, etc.)"
     )
     groq_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
     groq_max_tokens: int = Field(default=1024, ge=1, le=8192)
     groq_timeout: int = Field(default=30, description="Request timeout in seconds")
+    groq_vision_model: str = Field(
+        default="qwen/qwen3.8-27b",
+        description="Groq vision-capable model used to read photos/scans of reports.",
+    )
+    groq_risk_model: str = Field(
+        default="openai/gpt-oss-120b",
+        description="Groq model ID used by the Risk Agent (larger reasoning model).",
+    )
+
+    # ── Agent → Provider mapping ──────────────────────────────
+    # Which provider each agent prefers. Falls back to any available
+    # provider (then rule-based) when the preferred one is not configured.
+    agent_extraction_provider: str = Field(default="groq")
+    agent_diagnosis_provider: str = Field(default="groq")
+    agent_risk_provider: str = Field(default="groq")
+    agent_nutrition_provider: str = Field(default="groq")
+    agent_chat_provider: str = Field(default="groq")
 
     # ── OCR ────────────────────────────────────────────────────
     nvidia_api_key: str = Field(default="", description="NVIDIA API key for Nemotron OCR-v2")
@@ -80,6 +97,11 @@ class Settings(BaseSettings):
     @property
     def has_groq(self) -> bool:
         return bool(self.groq_api_key)
+
+    @property
+    def has_llm(self) -> bool:
+        """True when at least one LLM provider is configured."""
+        return self.has_groq
 
     @property
     def has_supabase(self) -> bool:

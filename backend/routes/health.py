@@ -19,14 +19,23 @@ async def health_check(request: Request):
     settings = get_settings()
     providers = []
 
-    # LLM status
+    # LLM status — one entry per configured provider
     llm = request.app.state.llm_service
     llm_status = llm.get_status()
-    providers.append(ProviderStatus(
-        name="groq_llm",
-        available=llm_status["available"],
-        model=llm_status.get("model"),
-    ))
+    provider_details = llm_status.get("providers", {})
+    if provider_details:
+        for name, detail in provider_details.items():
+            providers.append(ProviderStatus(
+                name=f"llm_{name}",
+                available=detail.get("available", False),
+                model=detail.get("model"),
+            ))
+    else:
+        providers.append(ProviderStatus(
+            name="llm",
+            available=llm_status.get("available", False),
+            error="No LLM provider configured (rule-based fallback active)",
+        ))
 
     # OCR status
     ocr = request.app.state.ocr_service
@@ -56,6 +65,6 @@ async def health_check(request: Request):
 
     return HealthResponse(
         status=status,
-        version="2.0.0",
+        version="3.0.0",
         providers=providers,
     )
