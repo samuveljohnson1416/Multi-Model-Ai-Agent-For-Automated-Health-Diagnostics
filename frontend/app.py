@@ -35,10 +35,9 @@ with st.sidebar:
     result = st.session_state.get("analysis_result")
     name = st.session_state.get("report_name")
     if result and name:
-        st.caption("Open report")
-        st.markdown(f"**{name}**")
+        st.markdown(f"Open report: **{name}**")
     else:
-        st.caption("No report open yet.")
+        st.caption("No report is open.")
 
     st.divider()
     st.caption(

@@ -271,8 +271,8 @@ class OCRService:
                 logger.debug("[DEV] Tesseract step skipped (OCR_DISABLE_TESSERACT=true)")
 
         raise ValueError(
-            f"Could not extract text from {file_type} file. "
-            "Please ensure the document is readable and not password-protected."
+            f"No readable text was found in this {file_type} file. "
+            "Upload a clearer photo or scan, or the digital copy of the report."
         )
 
     # ──────────────────────────────────────────────────────────
@@ -321,7 +321,11 @@ class OCRService:
             with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
                 total_pages = len(pdf.pages)
                 for page_num, page in enumerate(pdf.pages, start=1):
-                    text = page.extract_text()
+                    # Tight line tolerance (1pt vs the 3pt default) keeps a watermark or stamp that
+                    # overlaps a data row from being interleaved with it ("25D000 rlogHighy.co").
+                    # ponytail: a superscript (10^3) can land on its own line; the validator then
+                    # rescales using the printed range. Upgrade path: per-page fallback to 3pt.
+                    text = page.extract_text(y_tolerance=1)
                     if text:
                         pages_text.append(text)
                         # ── [EXTRACTION CHECKPOINT] Raw text lines from pdfplumber ──
@@ -363,6 +367,13 @@ class OCRService:
                     page_count=total_pages,
                 )
         except Exception as e:
+            from pdfminer.pdfdocument import PDFPasswordIncorrect
+
+            # pdfplumber wraps pdfminer errors in PdfminerException(args[0])
+            if any(isinstance(x, PDFPasswordIncorrect) for x in (e, *e.args)):
+                raise ValueError(
+                    "This PDF is password-protected. Remove the password, then upload it again."
+                )
             logger.warning(f"pdfplumber extraction failed: {e}")
 
         return None

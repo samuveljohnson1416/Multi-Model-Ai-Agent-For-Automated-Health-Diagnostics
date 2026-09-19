@@ -8,6 +8,7 @@ Provides:
   - System prompt abstraction
 """
 
+import asyncio
 import time
 import logging
 from abc import ABC, abstractmethod
@@ -17,6 +18,8 @@ from ..services.llm.provider_base import LLMProvider
 from .agent_models import AgentContext, AgentResult
 
 logger = logging.getLogger(__name__)
+
+AGENT_TIMEOUT_S = 60  # per agent; the agents run in parallel, so this also bounds the whole step
 
 
 class BaseAgent(ABC):
@@ -84,7 +87,9 @@ class BaseAgent(ABC):
         # Try LLM-powered execution
         if self.has_llm:
             try:
-                out = await self._execute_llm(context)
+                # Bounded: a rate-limited or slow model must degrade to the rule-based answer,
+                # not hang the request until the client gives up.
+                out = await asyncio.wait_for(self._execute_llm(context), AGENT_TIMEOUT_S)
                 # Autonomous agents return (text, tool_call_steps)
                 content, steps = out if isinstance(out, tuple) else (out, [])
                 elapsed_ms = int((time.perf_counter() - start) * 1000)

@@ -213,7 +213,8 @@ PARAMETER_ALIASES: Dict[str, str] = {
 def normalize_parameter_name(raw_name: str) -> str:
     """Normalize a raw parameter name to its canonical form."""
     key = raw_name.strip().lower()
-    return PARAMETER_ALIASES.get(key, raw_name.strip())
+    # JSON keys are often snake_case ("fasting_glucose"); aliases use spaces.
+    return PARAMETER_ALIASES.get(key) or PARAMETER_ALIASES.get(key.replace("_", " "), raw_name.strip())
 
 
 def _get_age_group(age: int) -> str:

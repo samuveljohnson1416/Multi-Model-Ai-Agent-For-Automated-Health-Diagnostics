@@ -59,14 +59,14 @@ if not result:
     recent = api_client.get_recent_reports()
     if recent:
         st.markdown("#### Pick a run to inspect")
-        labels = {f"{r['name']}  ·  {r['at']}": r["id"] for r in recent}
+        labels = {f"{r['name']} (analyzed {r['at']})": r["id"] for r in recent}
         choice = st.selectbox("Recent analyses", list(labels), label_visibility="collapsed")
         if st.button("Load", type="primary"):
             full = api_client.get_report(labels[choice])
             if full:
                 st.session_state.analysis_result = full.get("analysis")
                 st.session_state.report_id = labels[choice]
-                st.session_state.report_name = choice.split("  ·  ")[0]
+                st.session_state.report_name = choice.rsplit(" (analyzed ", 1)[0]
                 st.rerun()
             else:
                 st.error("Couldn't load that run.")
@@ -81,7 +81,7 @@ agents_used = result.get("agents_used", [])
 exec_summary = result.get("executive_summary")
 
 # ── Run summary ─────────────────────────────────────────────
-st.markdown(f"#### Last run — {st.session_state.get('report_name', 'report')}")
+st.markdown(f"#### Last run: {st.session_state.get('report_name', 'report')}")
 
 by_status = {"success": 0, "fallback": 0, "error": 0}
 for r in reports:
@@ -116,7 +116,7 @@ for r in sorted(reports, key=lambda x: _ORDER.get(x.get("agent_name"), 9)):
     ms = r.get("execution_time_ms", 0)
 
     with st.container(border=True):
-        st.markdown(f"**{name}**  ·  {badge}  ·  `{provider}`  ·  {ms} ms")
+        st.markdown(f"**{name}**: {badge}, `{provider}`, {ms} ms")
         st.caption(meaning)
 
         if r.get("error_message"):

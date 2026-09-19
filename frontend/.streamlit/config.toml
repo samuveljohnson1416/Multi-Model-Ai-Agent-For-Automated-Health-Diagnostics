@@ -1,0 +1,31 @@
+# Theme for the Streamlit UI. Colours and type come from the design plan in
+# frontend/theme.py. Streamlit reads this from the directory it is launched in:
+# this copy serves `cd frontend && streamlit run app.py` (Docker/Render, README);
+# the copy in the repo-root .streamlit/ serves `streamlit run frontend/app.py`.
+# Keep the two identical.
+
+[theme]
+primaryColor = "#0B5D68"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#EEF3F4"
+textColor = "#1C2B33"
+font = "Atkinson Hyperlegible"
+
+[[theme.fontFaces]]
+family = "Atkinson Hyperlegible"
+url = "app/static/fonts/atkinson-400.woff2"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Atkinson Hyperlegible"
+url = "app/static/fonts/atkinson-700.woff2"
+weight = 700
+
+[server]
+enableStaticServing = true
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false

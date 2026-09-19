@@ -45,6 +45,9 @@ class GroqProvider(LLMProvider):
                 self._client = Groq(
                     api_key=api_key,
                     timeout=timeout,
+                    # The SDK default (2) sleeps through each rate-limit window; failing fast lets
+                    # the agent fall back to rules instead of stalling the request.
+                    max_retries=1,
                 )
                 logger.info(f"GroqProvider initialized: model={model}")
             except Exception as e:

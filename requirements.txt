@@ -34,10 +34,9 @@ requests>=2.31.0
 python-dotenv>=1.0.0
 
 # ── Frontend ───────────────────────────────────────────────
-streamlit>=1.28.0
+streamlit>=1.50.0
 pandas>=2.0.0
 numpy>=1.24.0
-plotly>=5.18.0
 slowapi>=0.1.9
 
 # ── Testing (dev) ──────────────────────────────────────────

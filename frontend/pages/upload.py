@@ -19,7 +19,7 @@ if st.session_state.get("report_id"):
     c1, c2 = st.columns(2)
     if c1.button("View results", use_container_width=True, type="primary"):
         st.switch_page("pages/dashboard.py")
-    if c2.button("Start a new one", use_container_width=True):
+    if c2.button("Analyze another report", use_container_width=True):
         st.session_state.report_id = None
         st.session_state.report_name = None
         st.session_state.analysis_result = None
@@ -56,10 +56,13 @@ if size_mb > MAX_FILE_SIZE_MB:
     st.error(f"That file is {size_mb:.1f} MB. The limit is {MAX_FILE_SIZE_MB} MB.")
     st.stop()
 
-st.caption(f"{uploaded_file.name} · {size_mb:.1f} MB")
+st.caption(f"{uploaded_file.name} is {size_mb:.1f} MB.")
 
-if st.button("Analyze", type="primary", use_container_width=True):
-    with st.spinner("Reading the report and checking each value against its reference range…"):
+if st.button("Analyze report", type="primary", use_container_width=True):
+    with st.spinner(
+        "Reading the report and checking each value against its reference range. "
+        "Scanned photos can take up to a minute."
+    ):
         result = api_client.analyze_report(
             file_content=file_bytes,
             filename=uploaded_file.name,
@@ -69,12 +72,12 @@ if st.button("Analyze", type="primary", use_container_width=True):
         )
 
     if not result:
-        st.error(
-            "We couldn't analyze that file. Make sure it's a readable blood "
-            "test report with numeric results, then try again."
+        # Say what happened (the backend's reason, when it gave one) and how to fix it.
+        st.error(api_client.last_error or "This file could not be analyzed.")
+        st.write(
+            "Check that the file is a blood test report with numeric results and that "
+            "the text is readable, then upload it again."
         )
-        if api_client.last_error:
-            st.caption(f"Details: {api_client.last_error}")
         st.stop()
 
     st.session_state.report_id = result.get("report_id")

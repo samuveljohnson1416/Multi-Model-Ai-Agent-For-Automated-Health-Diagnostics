@@ -52,3 +52,21 @@ def test_thousands_units_are_scaled_not_flagged_critical():
     raw = {"Platelet": {"value": 182.0, "unit": "/cumm", "reference_range": "150 - 400"}}
     p = ValidatorService().validate(raw)[0]
     assert p.value == 182000 and p.status.value == "NORMAL"
+
+
+def test_password_protected_pdf_gets_a_specific_error():
+    import asyncio
+    import pytest
+    pypdf = pytest.importorskip("pypdf")  # only needed to build the fixture
+    from backend.services.ocr_service import OCRService
+    from PIL import Image
+
+    plain = io.BytesIO()
+    Image.new("RGB", (100, 100), "white").save(plain, format="PDF")
+    writer = pypdf.PdfWriter(clone_from=pypdf.PdfReader(io.BytesIO(plain.getvalue())))
+    writer.encrypt("secret")
+    locked = io.BytesIO()
+    writer.write(locked)
+
+    with pytest.raises(ValueError, match="password-protected"):
+        asyncio.run(OCRService().extract_text(locked.getvalue(), "pdf"))

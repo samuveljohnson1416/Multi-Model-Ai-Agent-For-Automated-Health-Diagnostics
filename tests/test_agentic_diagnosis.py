@@ -82,3 +82,15 @@ def test_provider_failure_falls_back_to_rules():
         async def chat_with_tools(self, *a, **k): raise RuntimeError("404 model_not_found")
     r = run(Boom([]))
     assert r.status == "fallback" and "Key Findings" in r.content
+
+
+def test_slow_model_is_cut_off_and_falls_back(monkeypatch):
+    import backend.agents.base_agent as base_agent
+
+    class Slow(Scripted):
+        async def chat_with_tools(self, *a, **k):
+            await asyncio.sleep(5)
+
+    monkeypatch.setattr(base_agent, "AGENT_TIMEOUT_S", 0.2)
+    r = run(Slow([]))
+    assert r.status == "fallback" and "Key Findings" in r.content

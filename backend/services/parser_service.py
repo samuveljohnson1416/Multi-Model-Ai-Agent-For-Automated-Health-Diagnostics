@@ -49,8 +49,8 @@ CBC_RANGE_FINGERPRINTS = [
 PARAMETER_PATTERNS = [
     # CBC Parameters
     (r"(?:Haemoglobin|Hemoglobin|HB|Hb|Hgb|HGB|HEMOGLOBIN|nos)\s*(?:\([^)]*\))?\s*[:=,]*\s*(\d+\.?\d*)", "Hemoglobin", "g/dL"),
-    (r"(?:RBC|Red Blood Cell|Total RBC Count|mec)\s*(?:\([^)]*\))?\s*[:=,]*\s*(\d+\.?\d*)", "RBC", "mill/cumm"),
-    (r"(?:WBC|White Blood Cell|Total WBC Count|Total WBC)\s*(?:\([^)]*\))?\s*[:=,]*\s*(\d+\.?\d*)", "WBC", "/cumm"),
+    (r"(?:RBC(?:\s+Count)?|Red Blood Cell(?:\s+Count)?|Total RBC Count|mec)\s*(?:\([^)]*\))?\s*[:=,]*\s*(\d+\.?\d*)", "RBC", "mill/cumm"),
+    (r"(?:WBC(?:\s+Count)?|White Blood Cell(?:\s+Count)?|Total WBC Count|Total WBC|(?:Total\s+)?Leu[ck]ocyte\s+Count|TLC)\s*(?:\([^)]*\))?\s*[:=,]*\s*(\d+\.?\d*)", "WBC", "/cumm"),
     (r"(?:Platelet|PLT|Platelets|Platelet Count|mr)\s*(?:\([^)]*\))?\s*[:=,]*\s*(\d+\.?\d*)", "Platelet", "/cumm"),
     (r"(?:PCV|Hematocrit|HCT|Packed Cell Volume|ucr)\s*(?:\([^)]*\))?\s*[:=,]*\s*(\d+\.?\d*)", "PCV", "%"),
     (r"(?:MCV|Mean Corpuscular Volume)\s*(?:\([^)]*\))?\s*[:=,]*\s*(\d+\.?\d*)", "MCV", "fL"),
@@ -128,7 +128,8 @@ ABBREVIATION_MAP = {
     "hb": "Hemoglobin", "hgb": "Hemoglobin", "hemoglobin": "Hemoglobin",
     "haemoglobin": "Hemoglobin", "nos": "Hemoglobin",
     "rbc": "RBC", "red blood cell": "RBC", "mec": "RBC",
-    "wbc": "WBC", "white blood cell": "WBC",
+    "wbc": "WBC", "white blood cell": "WBC", "tlc": "WBC",
+    "total leukocyte count": "WBC", "total leucocyte count": "WBC",
     "plt": "Platelet", "platelet": "Platelet", "platelets": "Platelet",
     "platelet count": "Platelet", "mr": "Platelet",
     "pcv": "PCV", "hematocrit": "PCV", "hct": "PCV", "ucr": "PCV",
@@ -205,6 +206,77 @@ SANITY_BOUNDS = {
 }
 
 
+# Count units, in the names unit_converter uses. The numbers are scaled ("6.9 K/mcL" means
+# 6900 per cumm), so the unit must be kept for the validator to convert; falling back to a
+# parameter's default unit would silently be off by 1000x.
+_COUNT_UNITS = [
+    (re.compile(r"(?:[x×]\s*)?10\s*[\^*]?\s*[3³]\s*/\s*[µuμm]c?\s*L|K\s*/\s*[µuμm]c?\s*L|thou\w*\s*/\s*[µuμm]c?\s*L", re.I), "×10³/µL"),
+    (re.compile(r"(?:[x×]\s*)?10\s*[\^*]?\s*[6⁶]\s*/\s*[µuμm]c?\s*L", re.I), "×10⁶/µL"),
+    (re.compile(r"(?:M|mill|million)s?\s*/\s*(?:cu\s*mm|cumm|cmm|mm3|[µuμm]c?\s*L)", re.I), "mill/cumm"),
+    (re.compile(r"lakh?s?\s*/\s*(?:cu\s*mm|cumm|cmm|mm3|[µuμm]c?\s*L)", re.I), "lakhs/µL"),
+    (re.compile(r"/?\s*(?:cu\s*mm|cumm|cmm)(?![A-Za-z])", re.I), "/cumm"),
+]
+
+
+_UNIT_SCALE = {"lakhs/µL": 100000, "×10³/µL": 1000}  # multiplier to /cumm
+
+
+def _canonical_unit(text: str):
+    """The count unit at the start of `text`, or None."""
+    text = text.strip()
+    for pattern, unit in _COUNT_UNITS:
+        if pattern.match(text):
+            return unit
+    return None
+
+
+# Any known parameter name or abbreviation, as a whole word.
+_NAME_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(k) for k in sorted(ABBREVIATION_MAP, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
+
+# "Mean Cell Volume (MCV) 109.6 H fL": the name patterns want the number right after the
+# name, so the abbreviation is also emitted as its own line ("MCV 109.6 H fL"). An
+# annotation letter after the bracket ("(HB/Hgb)) M 6.5") is skipped.
+_PAREN_ABBR = re.compile(r"\(([A-Za-z][A-Za-z/-]{1,9})\)\)?\s+(?:[A-Za-z]\s+)?(?=\d)")
+
+
+def _expand_abbreviations(text: str) -> str:
+    out = []
+    for line in text.split("\n"):
+        out.append(line)
+        m = _PAREN_ABBR.search(line)
+        if m:
+            out.append(m.group(1) + " " + line[m.end():])
+    return "\n".join(out)
+
+
+def _drop_stray_lines(text: str) -> str:
+    """
+    Drop a short non-data line wedged between a bare parameter name and its value line,
+    e.g. a watermark ("Total WBC count" / "Drlogy.com" / "25000 High 4000 - 11000").
+    Lines with digits, units ("/", "%") or parameter names are never dropped.
+    """
+    lines = text.split("\n")
+    keep = []
+    for i, line in enumerate(lines):
+        stray = (
+            0 < i < len(lines) - 1
+            and line.strip()
+            and len(line.split()) <= 3
+            and not re.search(r"[\d/%]", line)
+            and not _NAME_RE.search(line)
+            and _NAME_RE.search(lines[i - 1])
+            and not re.search(r"\d", lines[i - 1])
+            and re.match(r"\s*\d", lines[i + 1])
+        )
+        if not stray:
+            keep.append(line)
+    return "\n".join(keep)
+
+
 # Differential rows often print "<abs count> <abs range> <percent> <percent range>",
 # e.g. "NEU 2.63 1.60-7.00 51.1 40.0-73.0". The regex patterns grab the first number
 # (the absolute count), which would be mistaken for a percentage.
@@ -246,6 +318,11 @@ class ParserService:
         if params:
             return params
 
+        # Thousands separators: "5,100" -> "5100" (and "4,800 - 10,800" for ranges)
+        raw_text = re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", raw_text)
+        # "150k-410k" -> "150000-410000"
+        raw_text = re.sub(r"\b(\d{2,3})[kK]\b", lambda m: str(int(m.group(1)) * 1000), raw_text)
+
         # Try markdown table extraction (NVIDIA Nemotron OCR output)
         if "|" in raw_text:
             md_params = self._parse_markdown_table(raw_text)
@@ -284,9 +361,20 @@ class ParserService:
 
         parameters = {}
 
+        # Unwrap an envelope such as {"patient_info": {...}, "test_results": {...}}
+        if isinstance(data, dict) and "parameters" not in data:
+            for key in ("test_results", "results", "tests", "blood_tests", "lab_results"):
+                if isinstance(data.get(key), (dict, list)):
+                    data = data[key]
+                    break
+        if isinstance(data, list):
+            data = {"parameters": data}
+
         # Handle {"parameters": [{name, value, unit}, ...]}
         if isinstance(data, dict) and "parameters" in data:
             for param in data["parameters"]:
+                if not isinstance(param, dict):
+                    continue
                 name = param.get("name", "Unknown")
                 try:
                     value = float(param.get("value", 0))
@@ -348,7 +436,19 @@ class ParserService:
         # Normalise whitespace: collapse multiple spaces to one
         text = re.sub(r" {2,}", " ", text)
 
-        return text
+        # A printed flag between the name and the value ("MCHC H 35.7") hides the value from
+        # the name patterns. Status is computed from the value, so the flag can go.
+        text = re.sub(r"(?<![A-Za-z0-9])[HL](?=\d)", "", text)  # flag glued to the value: "H10570"
+        text = re.sub(r"([A-Za-z0-9)])[ \t]+[HLhl]\*{0,2}[ \t]+(?=[<>]?\s*\d)", r"\1 ", text)
+
+        # Sample qualifiers after the name ("Creatinine, Serum 0.83") hide the value too
+        text = re.sub(r",\s*(?:Serum|Plasma|Blood)\b", "", text, flags=re.IGNORECASE)
+
+        # "< 148" (below detection) -> 148: still flags low against the range, instead of
+        # being dropped. One-sided ranges ("<200") become a bare number, which is ignored.
+        text = re.sub(r"(?<![A-Za-z0-9])[<>≤≥]\s*(?=\d)", "", text)
+
+        return _drop_stray_lines(_expand_abbreviations(text))
 
     def _parse_markdown_table(self, text: str) -> Optional[Dict[str, dict]]:
         """Parse markdown tables produced by NVIDIA Nemotron OCR.
@@ -404,6 +504,10 @@ class ParserService:
                     ref_range = f"{range_match.group(1)} - {range_match.group(2)}"
                     continue
                 # Check if it looks like a unit
+                counted = _canonical_unit(cell) if len(cell.strip()) <= 14 else None
+                if counted:
+                    unit = counted
+                    continue
                 unit_match = re.match(
                     r"^(g/dL|g/L|mg/dL|mmol/L|mEq/L|U/L|%|fL|pg|/cumm|cells/[µu]L|"
                     r"mm/hr|ng/mL|pg/mL|mcg/dL|mIU/L|ng/dL|[µu]mol/L|mill/cumm|"
@@ -456,7 +560,8 @@ class ParserService:
                     continue
 
                 # Match against the 2-line window
-                match = re.search(pattern, window, re.IGNORECASE)
+                # A name must not start inside a longer word ("cL" in "mcL" is not Chloride)
+                match = re.search(r"(?<![A-Za-z])" + pattern, window, re.IGNORECASE)
                 if match:
                     line_matched = True
                     try:
@@ -467,19 +572,20 @@ class ParserService:
                         if percent:
                             value = percent[0]
 
-                        # Sanity check
+                        # Try to extract unit from the window
+                        unit = "%" if percent else (self._extract_unit(window, match.end()) or default_unit)
+
+                        # Sanity check, on the value at its true scale (3.5 lakhs/cumm is 350000)
                         bounds = SANITY_BOUNDS.get(param_name)
-                        if bounds and not (bounds[0] <= value <= bounds[1]):
+                        scaled = value * _UNIT_SCALE.get(unit, 1)
+                        if bounds and not (bounds[0] <= scaled <= bounds[1]):
                             logger.debug(
                                 "[PARSING CHECKPOINT] Line %03d: SANITY REJECTED %r "
                                 "-> %s=%.4f (bounds: %.2f-%.2f) from line: %r",
-                                line_num, match.group(0), param_name, value,
+                                line_num, match.group(0), param_name, scaled,
                                 bounds[0], bounds[1], window,
                             )
                             continue
-
-                        # Try to extract unit from the window
-                        unit = "%" if percent else (self._extract_unit(window, match.end()) or default_unit)
 
                         # Try to extract reference range from the window. For a percent
                         # column with no adjacent range, leave it empty so the built-in
@@ -522,12 +628,10 @@ class ParserService:
     def _extract_unit(self, line: str, value_end: int) -> Optional[str]:
         """Try to extract unit from text after the value."""
         remaining = line[value_end:].strip()
-        # Count units printed as a power of ten ("10^3/uL"): the numbers are scaled, so the
-        # unit must be kept for the validator to convert (default units would be wrong).
-        scaled = re.match(rf"[x×]?\s*10\s*[\^*]?\s*([36³⁶])\s*/\s*[µuμ]?\s*L", remaining, re.IGNORECASE)
-        if scaled:
-            return "×10³/µL" if scaled.group(1) in "3³" else "×10⁶/µL"
-        unit_pattern = r"^\s*(g/dL|g/L|mg/dL|mmol/L|mEq/L|U/L|%|fL|pg|/cumm|cells/µL|mm/hr|ng/mL|pg/mL|mcg/dL|mIU/L|ng/dL|µmol/L|mill/cumm|lakhs/µL)"
+        counted = _canonical_unit(remaining)
+        if counted:
+            return counted
+        unit_pattern = r"^\s*(g/dL|g/L|mg/dL|mmol/L|mEq/L|U/L|%|fL|pg/mL|pg|/cumm|cells/µL|mm/hr|ng/mL|mcg/dL|mIU/L|ng/dL|µmol/L|mill/cumm|lakhs/µL)"
         match = re.search(unit_pattern, remaining, re.IGNORECASE)
         return match.group(1) if match else None
 

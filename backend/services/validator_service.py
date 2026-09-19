@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 _RANGE_RE = re.compile(r"^\s*(\d+\.?\d*)\s*[-–]\s*(\d+\.?\d*)")
 
 
-def _report_range(text, builtin: Optional[dict]):
+def _report_range(text, builtin: Optional[dict], value: Optional[float] = None):
     """
     Parse the reference range printed on the report ("13.0 - 17.0").
 
@@ -42,6 +42,11 @@ def _report_range(text, builtin: Optional[dict]):
             return {"min": lo, "max": hi}, 1
         if 1 / 3000 <= ratio <= 1 / 300:
             return {"min": lo * 1000, "max": hi * 1000}, 1000
+        # A different unit from the built-in range (T3 in ng/mL vs ng/dL). The printed
+        # value and range share a unit, so the range is right if the value sits near it;
+        # a noise "range" (a date, a page number) will not.
+        if value is not None and lo / 5 <= value <= hi * 5:
+            return {"min": lo, "max": hi}, 1
         return None
     return {"min": lo, "max": hi}, 1
 
@@ -105,7 +110,7 @@ class ValidatorService:
         builtin = get_reference_range(canonical, age=age, gender=gender)
         ref = None
         if value == reported_value:
-            found = _report_range(data.get("reference_range"), builtin)
+            found = _report_range(data.get("reference_range"), builtin, value)
             if found:
                 ref, scale = found
                 ref["unit"] = unit

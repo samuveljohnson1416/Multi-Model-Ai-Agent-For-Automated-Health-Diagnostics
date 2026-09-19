@@ -38,11 +38,13 @@ services:
         value: "openai/gpt-oss-20b"
       - key: GROQ_RISK_MODEL
         value: "openai/gpt-oss-120b"
+      - key: GROQ_VISION_MODEL      # reads photos and scanned PDFs (uses GROQ_API_KEY)
+        value: "qwen/qwen3.8-27b"
 
       # ── Secrets (set in the Render dashboard) ────────────────────────────
       - key: GROQ_API_KEY
         sync: false
-      - key: NVIDIA_API_KEY          # optional — better OCR on poor scans
+      - key: NVIDIA_API_KEY          # optional — second-choice OCR after the Groq vision model; leave unset unless you have a real key
         sync: false
       - key: SUPABASE_URL            # optional — persistent storage
         sync: false

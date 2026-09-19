@@ -44,7 +44,11 @@ a healthcare provider.
 - **Provider abstraction** — Groq sits behind a small provider interface with a
   registry, so another LLM can be added without touching the agents.
 - **Plain, task-focused UI** — four pages (analyze, results, questions,
-  history); no jargon, no raw model output on screen.
+  history); no jargon, no raw model output on screen. Each flagged value is
+  drawn as a marker on its own reference range, and status is always also
+  written out (never colour alone). Type is Atkinson Hyperlegible, self-hosted
+  in `frontend/static/fonts`. The design plan and colour tokens are in
+  `frontend/theme.py`.
 - **Internal `/agent-review` page** — an unlisted diagnostic view of the last
   pipeline run: which agent answered, which model, how long it took, and what
   it produced. Reachable only by typing the URL (its nav link is hidden).
@@ -99,6 +103,9 @@ tests/
   test_agents_v3.py        LLM provider, agent, and wired-API tests
   test_agentic_diagnosis.py  Tool-calling loop (scripted model, no network)
   test_parser_table.py     Parser table rows and report-range priority
+  test_scanned_reports.py  PDF rendering, OCR post-processing, password-protected PDFs
+  test_real_layouts.py     Layouts from real lab reports (watermarks, flags, lakhs, K/mcL...)
+  e2e/ui_smoke.py          Playwright browser test of the Streamlit UI (not run by pytest)
 
 render.yaml, Dockerfile.backend, Dockerfile.frontend, Dockerfile (single-container),
 start-backend.sh, start-frontend.sh, start.sh, requirements.txt, .env.example
@@ -170,6 +177,11 @@ pytest -q
 Tests marked `requires_groq` make real Groq API calls and are skipped
 automatically if `GROQ_API_KEY` isn't set. The tool-calling loop tests use a
 scripted stand-in model so they run offline.
+
+Browser test (needs `pip install playwright` and `playwright install chromium`;
+the docstring in `tests/e2e/ui_smoke.py` has the command that starts both servers
+and runs it). It checks fonts, keyboard focus, reduced motion, phone-width layout,
+the error message for an unreadable file, and the upload-to-results flow.
 
 ### Production / Render Deployment
 

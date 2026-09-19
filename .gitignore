@@ -53,3 +53,5 @@ temp/
 # Excluded by User Request
 docs/*
 !docs/ARCHITECTURE.md
+# Browser smoke-test screenshots
+tests/e2e/out/

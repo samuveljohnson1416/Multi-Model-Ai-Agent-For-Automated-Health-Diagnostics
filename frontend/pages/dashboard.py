@@ -3,11 +3,9 @@
 # pyrefly: ignore [missing-import]
 import streamlit as st
 import pandas as pd
-# pyrefly: ignore [missing-import]
-import plotly.express as px
 
 from session import init_session_state
-from theme import apply_chrome, STATUS_STYLE, risk_label, rendered
+from theme import apply_chrome, STATUS_STYLE, range_strips, risk_chip, rendered
 
 apply_chrome()
 init_session_state()
@@ -15,8 +13,8 @@ init_session_state()
 result = st.session_state.get("analysis_result")
 if not result:
     st.title("Results")
-    st.write("Nothing to show yet.")
-    if st.button("Start an analysis", type="primary"):
+    st.write("No report is open. Analyze a report to see its results here.")
+    if st.button("Analyze a report", type="primary"):
         st.switch_page("pages/upload.py")
     st.stop()
 
@@ -40,26 +38,14 @@ n_abn = len(abnormal)
 if n_abn == 0:
     headline = f"All {total} values are within their normal ranges."
 else:
-    headline = f"{n_abn} of {total} values fall outside the normal range"
+    headline = f"{n_abn} of {total} values fall outside the normal range."
     if critical:
         names = ", ".join(p["name"] for p in critical)
-        headline += f" — {len(critical)} well outside ({names})."
-    else:
-        headline += "."
+        headline += f" {len(critical)} of them {'is' if len(critical) == 1 else 'are'} well outside it: {names}."
 st.subheader(headline)
 
 level = (risks.get("risk_level") or "unknown").lower()
-_, fg, bg = {
-    "low": ("", "#1b5e20", "#e8f5e9"),
-    "medium": ("", "#8a5a00", "#fff3e0"),
-    "high": ("", "#9a2222", "#fdecea"),
-    "critical": ("", "#ffffff", "#c62828"),
-}.get(level, ("", "#555", "#eee"))
-st.markdown(
-    f'Overall assessment: <span class="chip" style="color:{fg};background:{bg}">'
-    f'{risk_label(level)}</span>',
-    unsafe_allow_html=True,
-)
+st.markdown(f"Overall assessment: {risk_chip(level)}", unsafe_allow_html=True)
 
 framingham = risks.get("framingham_risk") or {}
 if framingham.get("risk_percent") is not None:
@@ -69,7 +55,7 @@ if framingham.get("risk_percent") is not None:
     )
 
 for w in result.get("warnings", []):
-    st.caption(f"Note: {w}")
+    st.warning(w)
 
 st.divider()
 
@@ -106,21 +92,9 @@ def _table(rows):
 
 if abnormal:
     st.markdown("#### Flagged values")
-    st.dataframe(_table(abnormal), use_container_width=True, hide_index=True)
 
-    dev = [p for p in abnormal if p.get("deviation_percent")]
-    if dev:
-        chart_df = pd.DataFrame(dev)
-        fig = px.bar(
-            chart_df.sort_values("deviation_percent"),
-            x="deviation_percent", y="name", orientation="h",
-            labels={"deviation_percent": "% outside reference range", "name": ""},
-            color="status",
-            color_discrete_map={"LOW": "#f0a05a", "HIGH": "#e07a7a", "CRITICAL": "#c62828"},
-        )
-        fig.update_layout(height=max(180, 34 * len(dev)), showlegend=False,
-                          margin=dict(l=0, r=0, t=10, b=0))
-        st.plotly_chart(fig, use_container_width=True)
+    st.markdown(range_strips(sorted(abnormal, key=lambda p: _STATUS_ORDER.get(p.get("status"), 9))),
+                unsafe_allow_html=True)
 
     with st.expander(f"Show all {total} values"):
         st.dataframe(_table(parameters), use_container_width=True, hide_index=True)

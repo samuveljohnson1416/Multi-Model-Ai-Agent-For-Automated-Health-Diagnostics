@@ -6,10 +6,9 @@ WORKDIR /app
 # Only the packages the Streamlit UI needs, to keep the image small.
 # Version specifiers are quoted so the shell does not read ">=" as a redirect.
 RUN pip install --no-cache-dir \
-    "streamlit>=1.28.0" \
+    "streamlit>=1.50.0" \
     "pandas>=2.0.0" \
     "numpy>=1.24.0" \
-    "plotly>=5.18.0" \
     "httpx>=0.25.0" \
     "python-dotenv>=1.0.0"
 
